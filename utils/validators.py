@@ -18,8 +18,8 @@ def validate_telegram_id(telegram_id: int) -> bool:
     Returns:
         bool: True if valid
     """
-    # TODO: Check if telegram_id is positive integer
-    # TODO: Check reasonable range
+    # TODO: Check if telegram_id is in reasonable range
+    # TODO: Validate against known Telegram ID constraints
     pass
 
 

@@ -4,7 +4,7 @@ Keyboard builder utility.
 Provides helpers for creating inline and reply keyboards.
 """
 
-from typing import Optional, List
+from typing import Optional
 from aiogram.types import (
     InlineKeyboardMarkup,
     InlineKeyboardButton,
@@ -23,7 +23,7 @@ class KeyboardBuilder:
     
     @staticmethod
     def build_inline_keyboard(
-        buttons: List[List[tuple[str, str]]],
+        buttons: list[list[tuple[str, str]]],
         resize: bool = True
     ) -> InlineKeyboardMarkup:
         """
@@ -43,7 +43,7 @@ class KeyboardBuilder:
     
     @staticmethod
     def build_reply_keyboard(
-        buttons: List[List[str]],
+        buttons: list[list[str]],
         resize: bool = True,
         one_time: bool = False
     ) -> ReplyKeyboardMarkup:

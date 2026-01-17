@@ -4,7 +4,7 @@ Rate limiting middleware.
 Implements rate limiting to prevent spam and abuse.
 """
 
-from typing import Any, Awaitable, Callable, Dict
+from typing import Any, Awaitable, Callable
 from datetime import datetime, timedelta
 from collections import defaultdict
 
@@ -30,13 +30,13 @@ class RateLimitMiddleware(BaseMiddleware):
         super().__init__()
         self._rate_limit = rate_limit
         self._time_period = timedelta(seconds=time_period)
-        self._user_requests: Dict[int, list[datetime]] = defaultdict(list)
+        self._user_requests: dict[int, list[datetime]] = defaultdict(list)
     
     async def __call__(
         self,
-        handler: Callable[[TelegramObject, Dict[str, Any]], Awaitable[Any]],
+        handler: Callable[[TelegramObject, dict[str, Any]], Awaitable[Any]],
         event: TelegramObject,
-        data: Dict[str, Any]
+        data: dict[str, Any]
     ) -> Any:
         """
         Check rate limit and process update.
