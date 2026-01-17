@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  bot:
+    build: .
+    container_name: nanotoolz_bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - nanotoolz_network
+    depends_on:
+      - mongo
+    command: python main.py
+
+  # Optional: Local MongoDB for development
+  # Remove this service if using MongoDB Atlas
+  mongo:
+    image: mongo:7
+    container_name: nanotoolz_mongo
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-admin123}
+    volumes:
+      - mongo_data:/data/db
+    ports:
+      - "27017:27017"
+    networks:
+      - nanotoolz_network
+
+networks:
+  nanotoolz_network:
+    driver: bridge
+
+volumes:
+  mongo_data:

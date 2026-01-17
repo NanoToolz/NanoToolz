@@ -1,0 +1,15 @@
+# Python 3.11+ required
+
+# Telegram Bot Framework
+aiogram==3.13.1
+
+# Async MongoDB driver
+motor==3.6.0
+
+# Configuration management
+pydantic==2.10.3
+pydantic-settings==2.6.1
+python-dotenv==1.0.1
+
+# Utilities
+python-dateutil==2.9.0
