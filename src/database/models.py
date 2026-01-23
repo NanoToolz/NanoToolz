@@ -1,8 +1,7 @@
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, Text, ForeignKey, Enum, DECIMAL, JSON
+from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, Text, ForeignKey, DECIMAL, JSON
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
-import enum
 
 Base = declarative_base()
 
@@ -24,6 +23,9 @@ class User(Base):
     
     orders = relationship("Order", back_populates="user")
     support_tickets = relationship("SupportTicket", back_populates="user")
+    cart_items = relationship("CartItem", back_populates="user", cascade="all, delete-orphan")
+    wishlist_items = relationship("WishlistItem", back_populates="user", cascade="all, delete-orphan")
+    reviews = relationship("Review", back_populates="user", cascade="all, delete-orphan")
 
 class Category(Base):
     __tablename__ = "categories"
@@ -61,6 +63,8 @@ class Product(Base):
     category = relationship("Category", back_populates="products")
     deliveries = relationship("ProductDelivery", back_populates="product")
     orders = relationship("Order", back_populates="product")
+    reviews = relationship("Review", back_populates="product", cascade="all, delete-orphan")
+    wishlist_items = relationship("WishlistItem", back_populates="product", cascade="all, delete-orphan")
 
 class ProductDelivery(Base):
     __tablename__ = "product_deliveries"
@@ -84,6 +88,7 @@ class Order(Base):
     price_paid_usdt = Column(DECIMAL(10, 2))
     credits_used = Column(DECIMAL(10, 2), default=0)
     payment_method = Column(String)  # usdt_tron, usdt_eth, credits
+    payment_ref = Column(String, index=True, nullable=True)
     payment_status = Column(String, default="pending")  # pending, completed, failed
     delivery_status = Column(String, default="pending")  # pending, sent, failed
     tx_hash = Column(String, nullable=True)
@@ -123,7 +128,7 @@ class SupportTicket(Base):
     status = Column(String, default="open")  # open, in_progress, resolved
     priority = Column(String, default="normal")  # low, normal, high
     assigned_to = Column(String, nullable=True)
-    responses = Column(JSON, default=[])
+    responses = Column(JSON, default=list)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
@@ -134,10 +139,63 @@ class Payment(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"))
-    amount_usdt = Column(DECIMAL(10, 2))
+    payment_ref = Column(String, index=True)
+    amount = Column(DECIMAL(10, 2))
+    currency = Column(String, default="USDT")
+    method = Column(String)  # usdt_tron, ltc
     tx_hash = Column(String, unique=True, index=True)
     wallet_from = Column(String)
+    wallet_to = Column(String)
     status = Column(String, default="pending")  # pending, confirmed, failed
     confirmations = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class CartItem(Base):
+    __tablename__ = "cart_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    product_id = Column(Integer, ForeignKey("products.id"))
+    quantity = Column(Integer, default=1)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User", back_populates="cart_items")
+    product = relationship("Product")
+
+
+class WishlistItem(Base):
+    __tablename__ = "wishlist_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    product_id = Column(Integer, ForeignKey("products.id"))
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User", back_populates="wishlist_items")
+    product = relationship("Product", back_populates="wishlist_items")
+
+
+class Review(Base):
+    __tablename__ = "reviews"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    product_id = Column(Integer, ForeignKey("products.id"))
+    rating = Column(Integer, default=5)
+    comment = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User", back_populates="reviews")
+    product = relationship("Product", back_populates="reviews")
+
+
+class Setting(Base):
+    __tablename__ = "settings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    key = Column(String, unique=True, index=True)
+    value = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

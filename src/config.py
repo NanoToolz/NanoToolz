@@ -15,7 +15,8 @@ class Settings(BaseSettings):
     # Crypto
     TRON_PROVIDER_URL: str = os.getenv("TRON_PROVIDER_URL", "https://api.tronstack.cn")
     USDT_CONTRACT_ADDRESS: str = os.getenv("USDT_CONTRACT_ADDRESS", "TR7NHqjeKQxGTCi8q282JJUC8kxrRvs5Qm")
-    PAYMENT_WALLET_ADDRESS: str = os.getenv("PAYMENT_WALLET_ADDRESS", "YOUR_TRON_ADDRESS")
+    PAYMENT_WALLET_TRON: str = os.getenv("PAYMENT_WALLET_TRON", "TXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX")
+    PAYMENT_WALLET_LTC: str = os.getenv("PAYMENT_WALLET_LTC", "LXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX")
     
     # Redis
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
@@ -29,6 +30,10 @@ class Settings(BaseSettings):
     PRIMARY_CURRENCY: str = os.getenv("PRIMARY_CURRENCY", "USD")
     EXCHANGE_RATE_API: str = os.getenv("EXCHANGE_RATE_API", "coingecko")
     
+    # Store
+    STORE_NAME: str = os.getenv("STORE_NAME", "NanoToolz Store")
+    SUPPORT_CONTACT: str = os.getenv("SUPPORT_CONTACT", "@YourSupport")
+
     # App
     APP_ENV: str = os.getenv("APP_ENV", "development")
     DEBUG: bool = os.getenv("DEBUG", "True").lower() == "true"

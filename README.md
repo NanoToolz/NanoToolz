@@ -1,121 +1,40 @@
-# Basic git
-git status
-git add .
-git commit -m "message"
-git push origin main
+# NanoToolz Telegram Store Bot
 
-# Repository already working
-# Code already pushed to GitHub
-# Basic git
-git status
-git add .
-git commit -m "message"
-git push origin main
+## Quick start
+1) Copy `.env.example` to `.env` and set `BOT_TOKEN`
+2) `pip install -r requirements.txt`
+3) `python main.py`
 
-# Repository already working
-# Code already pushed to GitHub
-🚀 Nanotoolz.me – Scalable Premium Telegram Store Bot built with Python (aiogram v3). Sell digital products, license keys, tools, courses & subscriptions.
+## Admin panel
+1) `uvicorn web.admin:app --reload`
+2) Open `http://localhost:8000`
+3) Login with `ADMIN_USERNAME` and `ADMIN_PASSWORD` from `.env`
 
-## Git guide (short & practical)
-Yeh README aapko git use karna sikhata hai — commands aur short description ke saath. Linux terminal assume kiya gaya hai.
+## Structure
+- `main.py` - entry point
+- `src/bot/app.py` - dispatcher setup
+- `src/bot/commands.py` - command list
+- `src/bot/routers.py` - router registry
+- `src/bot/features/<feature>/` - feature folders
+  - `handlers.py` - handlers and logic
+  - `keyboards.py` - buttons/UI
+  - `messages.py` - text/messages
+- `src/database/models.py` - database schema
+- `src/seed.py` - optional seed data (skips if data already exists)
+- `web/admin.py` - admin panel (optional)
 
-### 1) Ek dafa global config (aapki identity)
-```bash
-git config --global user.name "Your Name"
-git config --global user.email "you@example.com"
-```
+## Add a new feature
+1) Create a folder: `src/bot/features/<feature>/`
+2) Add `handlers.py`, `keyboards.py`, `messages.py`
+3) Register the router in `src/bot/routers.py`
+4) Add a command in `src/bot/commands.py` (if needed)
+5) Add DB tables in `src/database/models.py` (if needed)
 
-### 2) Project folder mein jao
-```bash
-cd /home/dev/Telegram\ Bots/NanoToolz
-```
+## Products
+- Stored in the database.
+- Use `src/seed.py` for initial categories/products.
+- To reseed from scratch, delete the DB file and run the bot again.
 
-### 3) Naya repo shuru karna
-```bash
-git init
-# Stage + commit
-git add .
-git commit -m "Initial commit"
-# default branch ko main bananey ke liye:
-git branch -M main
-```
-
-### 4) Remote (GitHub) add karna aur push karna
-SSH:
-```bash
-git remote add origin git@github.com:username/repo.git
-git push -u origin main
-```
-HTTPS:
-```bash
-git remote add origin https://github.com/username/repo.git
-git push -u origin main
-```
-
-### 5) Remote se clone karna
-```bash
-git clone git@github.com:username/repo.git
-# ya
-git clone https://github.com/username/repo.git
-```
-
-### 6) Rozmarra ke commands (small workflow)
-- Status dekhna:
-```bash
-git status
-```
-- Files stage + commit:
-```bash
-git add file.py
-git commit -m "Short message"
-# ya quick (saved changes only):
-git commit -am "Update files"
-```
-- Branch create karna aur switch karna:
-```bash
-git checkout -b feature-branch
-# branch switch:
-git checkout main
-```
-- Changes fetch/pull:
-```bash
-git fetch
-git pull
-```
-- Push:
-```bash
-git push origin feature-branch
-```
-- Merge local branch:
-```bash
-git checkout main
-git merge feature-branch
-```
-- History:
-```bash
-git log --oneline --graph --decorate
-```
-
-### 7) .gitignore
-Project mein unnecessary files ignore karne ke liye .gitignore banayein:
-```text
-__pycache__/
-*.pyc
-.env
-config.json
-```
-
-### 8) Common tips
-- Har commit chhota aur meaningful rakhein.
-- Branch per feature develop karein, phir PR/merge karein.
-- SSH keys set karne se pushes aasaan hotay hain (no password prompts).
-- Sensitive data kabhi repo mein na rakhein — use environment variables / secrets.
-
-### 9) Quick GitHub repo setup (web)
-1. GitHub par new repo banayein.
-2. Remote URL copy karein.
-3. Terminal se remote add aur push karein (upar diye gaye commands).
-
----
-
-References: git official docs — https://git-scm.com/docs
+## Settings
+- Store settings are stored in the database (`settings` table).
+- Update them from the admin panel (Store Settings page).

@@ -1,0 +1,6 @@
+CATEGORIES_TITLE = "📚 <b>Browse Categories</b>\n\nSelect a category to view products:"
+PRODUCTS_TITLE = "📦 <b>Products</b>\n\nFound {count} products"
+PRODUCT_NOT_FOUND = "Product not found"
+REVIEWS_TITLE = "📋 <b>Reviews</b>\\n\\n"
+REVIEWS_EMPTY = "No reviews yet. Be the first to review this product!"
+REVIEW_PROMPT = "⭐ <b>Rate this product</b>\\n\\nSelect a rating:"

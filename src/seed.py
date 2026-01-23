@@ -1,17 +1,33 @@
 import uuid
 from sqlalchemy.orm import Session
-from src.database.models import Category, Product, ProductDelivery
+from src.database.models import Category, Product, ProductDelivery, Setting
 from src.database import SessionLocal
+
+
+DEFAULT_SETTINGS = {
+    "store_name": "NanoToolz Store",
+    "support_contact": "@YourSupport",
+    "payment_usdt_tron_wallet": "TXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+    "payment_ltc_wallet": "LXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+    "payment_notice": "Send the exact amount and tap 'I Paid' after payment.",
+}
+
+
+def seed_settings(db: Session) -> None:
+    for key, value in DEFAULT_SETTINGS.items():
+        existing = db.query(Setting).filter(Setting.key == key).first()
+        if not existing:
+            db.add(Setting(key=key, value=value))
+    db.commit()
 
 def seed_dummy_data():
     """Seed database with dummy products and categories"""
     db = SessionLocal()
-    
-    # Clear existing data
-    db.query(ProductDelivery).delete()
-    db.query(Product).delete()
-    db.query(Category).delete()
-    db.commit()
+    seed_settings(db)
+    if db.query(Category).first():
+        db.close()
+        print("ℹ️  Data already present, skipping seed.")
+        return
     
     # Create categories
     categories_data = [
