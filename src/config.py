@@ -1,13 +1,14 @@
 import os
 from dotenv import load_dotenv
-from pydantic_settings import BaseSettings
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 load_dotenv()
 
 class Settings(BaseSettings):
     # Bot
     BOT_TOKEN: str = os.getenv("BOT_TOKEN", "YOUR_BOT_TOKEN")
-    ADMIN_IDS: list = [int(x) for x in os.getenv("ADMIN_IDS", "123456789").split(",")]
+    ADMIN_IDS: list[int] = Field(default_factory=lambda: [123456789])
     
     # Database
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///nanotoolz.db")
@@ -38,7 +39,20 @@ class Settings(BaseSettings):
     APP_ENV: str = os.getenv("APP_ENV", "development")
     DEBUG: bool = os.getenv("DEBUG", "True").lower() == "true"
     
-    class Config:
-        env_file = ".env"
+    @field_validator("ADMIN_IDS", mode="before")
+    @classmethod
+    def parse_admin_ids(cls, value):
+        if value is None:
+            return [123456789]
+        if isinstance(value, str):
+            parts = [item.strip() for item in value.split(",") if item.strip()]
+            return [int(item) for item in parts]
+        if isinstance(value, int):
+            return [value]
+        if isinstance(value, (list, tuple)):
+            return [int(item) for item in value]
+        return value
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 settings = Settings()
