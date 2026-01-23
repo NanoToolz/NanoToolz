@@ -5,6 +5,8 @@ from aiogram.types import CallbackQuery
 
 from src.database import SessionLocal
 from src.database.models import DailySpin, User
+from src.logger import logger
+from src.middleware.rate_limiter import check_rate_limit
 from .keyboards import spin_result_keyboard
 from .messages import SPIN_ALREADY, SPIN_RESULT_CREDITS, SPIN_RESULT_DISCOUNT
 
@@ -14,6 +16,13 @@ router = Router()
 @router.callback_query(F.data == "daily_spin")
 async def daily_spin_callback(query: CallbackQuery) -> None:
     """Daily spin"""
+    allowed, warn = check_rate_limit(query.from_user.id, with_warning=True)
+    if not allowed:
+        await query.answer("⏱️ Too many requests. Wait 30 seconds.", show_alert=True)
+        return
+    if warn:
+        await query.answer("⚠️ You're sending too many requests. Slow down.", show_alert=True)
+
     db = SessionLocal()
     try:
         today = date.today()
@@ -49,6 +58,10 @@ async def daily_spin_callback(query: CallbackQuery) -> None:
             if user:
                 user.credits = float(user.credits) + reward_value
         db.commit()
+    except Exception as exc:
+        logger.error("Error in daily_spin_callback: %s", exc)
+        await query.answer("❌ Something went wrong. Try again.", show_alert=True)
+        return
     finally:
         db.close()
 

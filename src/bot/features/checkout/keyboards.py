@@ -6,6 +6,7 @@ def payment_method_keyboard() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [InlineKeyboardButton(text="🪙 USDT (TRON)", callback_data="pay_usdt_tron")],
             [InlineKeyboardButton(text="🪙 Litecoin (LTC)", callback_data="pay_ltc")],
+            [InlineKeyboardButton(text="💳 Pay with Credits", callback_data="pay_credits")],
             [InlineKeyboardButton(text="🔙 Back to Cart", callback_data="cart")],
         ]
     )

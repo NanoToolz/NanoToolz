@@ -1,18 +1,12 @@
 import asyncio
-import logging
 from aiogram import Bot
 
 from src.config import settings
 from src.database import init_db
 from src.bot import create_dispatcher, set_bot_commands
 from src.seed import seed_dummy_data
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
-logger = logging.getLogger(__name__)
+from src.scheduler import start_scheduler
+from src.logger import logger
 
 async def main():
     """Main bot entry point"""
@@ -29,9 +23,12 @@ async def main():
     logger.info("🤖 Starting bot...")
     bot = Bot(token=settings.BOT_TOKEN)
     dp = create_dispatcher()
-    
+
     # Set bot commands
     await set_bot_commands(bot)
+
+    # Start scheduler
+    start_scheduler()
     
     try:
         # Start polling

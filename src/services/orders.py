@@ -8,6 +8,7 @@ from typing import Iterable
 from sqlalchemy.orm import Session
 
 from src.database.models import CartItem, Order, Payment, Product, ProductDelivery, Referral, User
+from src.services.pricing import calculate_current_price
 
 
 def create_payment_from_cart(
@@ -27,8 +28,8 @@ def create_payment_from_cart(
         if not product:
             continue
 
-        price_usd = float(product.price_usd) * item.quantity
-        price_usdt = float(product.price_usdt) * item.quantity
+        price_usd = calculate_current_price(product, "USD") * item.quantity
+        price_usdt = calculate_current_price(product, "USDT") * item.quantity
         total_usd += price_usd
         total_usdt += price_usdt
 

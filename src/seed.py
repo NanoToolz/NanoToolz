@@ -1,6 +1,7 @@
 import uuid
 from sqlalchemy.orm import Session
 from src.database.models import Category, Product, ProductDelivery, Setting
+from src.services.pricing import DEFAULT_USDT_RATE
 from src.database import SessionLocal
 
 
@@ -263,8 +264,20 @@ def seed_dummy_data():
     for prod_data in products_data:
         category = categories[prod_data.pop("category")]
         
+        initial_usd = float(prod_data.get("price_usd", 0))
+        min_usd = min(initial_usd, max(round(initial_usd * 0.2, 2), 5.0))
+        drop_days = 30
+        daily_drop = (initial_usd - min_usd) / drop_days if drop_days else 0
+
         product = Product(
             category_id=category.id,
+            price_initial_usd=initial_usd,
+            price_initial_usdt=initial_usd * DEFAULT_USDT_RATE,
+            price_minimum_usd=min_usd,
+            price_minimum_usdt=min_usd * DEFAULT_USDT_RATE,
+            price_drop_per_day_usd=daily_drop,
+            price_drop_per_day_usdt=daily_drop * DEFAULT_USDT_RATE,
+            drop_period_days=drop_days,
             **prod_data
         )
         db.add(product)

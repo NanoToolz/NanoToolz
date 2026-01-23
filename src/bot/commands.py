@@ -6,6 +6,7 @@ COMMANDS = [
     ("help", "Show help menu"),
     ("shop", "Browse store"),
     ("cart", "View your cart"),
+    ("topup", "Top up credits"),
     ("profile", "View your profile"),
     ("support", "Get support"),
 ]

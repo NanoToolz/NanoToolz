@@ -49,6 +49,14 @@ class Product(Base):
     description = Column(Text)
     price_usd = Column(DECIMAL(10, 2))
     price_usdt = Column(DECIMAL(10, 2))
+    price_initial_usd = Column(DECIMAL(10, 2), nullable=False, default=0)
+    price_initial_usdt = Column(DECIMAL(10, 2), nullable=False, default=0)
+    price_drop_per_day_usd = Column(DECIMAL(10, 4), default=0)
+    price_drop_per_day_usdt = Column(DECIMAL(10, 4), default=0)
+    price_minimum_usd = Column(DECIMAL(10, 2), nullable=False, default=0)
+    price_minimum_usdt = Column(DECIMAL(10, 2), nullable=False, default=0)
+    drop_period_days = Column(Integer, default=30)
+    price_last_calculated = Column(DateTime, default=datetime.utcnow)
     product_type = Column(String)  # key, file, license, subscription, course
     stock = Column(Integer, nullable=True)  # NULL = unlimited
     sales_count = Column(Integer, default=0)

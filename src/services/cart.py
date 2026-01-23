@@ -3,6 +3,7 @@
 from sqlalchemy.orm import Session
 
 from src.database.models import CartItem, Product
+from src.services.pricing import calculate_current_price
 
 
 def get_cart_items(db: Session, user_id: int) -> list[CartItem]:
@@ -58,6 +59,8 @@ def get_cart_totals(db: Session, user_id: int) -> tuple[float, float]:
     for item in items:
         product = db.query(Product).filter(Product.id == item.product_id).first()
         if product:
-            total_usd += float(product.price_usd) * item.quantity
-            total_usdt += float(product.price_usdt) * item.quantity
+            current_usd = calculate_current_price(product, "USD")
+            current_usdt = calculate_current_price(product, "USDT")
+            total_usd += current_usd * item.quantity
+            total_usdt += current_usdt * item.quantity
     return total_usd, total_usdt

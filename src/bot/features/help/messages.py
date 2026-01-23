@@ -6,6 +6,7 @@ HELP_MESSAGE = (
     "/profile - View your profile\n"
     "/shop - Browse products\n"
     "/cart - View your cart\n"
+    "/topup - Add credits\n"
     "/support - Create support ticket\n\n"
     "Need help? Use the Support option in main menu."
 )

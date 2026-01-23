@@ -1,10 +1,11 @@
 PROFILE_MESSAGE = (
-    "👤 <b>Profile</b>\n\n"
-    "Username: @{username}\n"
-    "💰 Credits: {credits}\n"
-    "🎁 Referrals: {referrals}\n"
+    "👤 <b>Your Profile</b>\n\n"
+    "Username: {username}\n"
+    "💵 Balance: ${credits:.2f}\n"
+    "🎟️ Referral Code: <code>{referral_code}</code>\n"
+    "👥 Referrals: {referrals}\n"
     "📦 Orders: {orders}\n\n"
-    "🔗 Referral Code: <code>{referral_code}</code>"
+    "💡 Tip: Use your balance to buy products instantly!"
 )
 
 SETTINGS_MESSAGE = (
