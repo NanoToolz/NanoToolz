@@ -1,41 +1,98 @@
+"""
+Help feature - FAQ and support
+"""
 from aiogram import Router, F
-from aiogram.filters import Command
-from aiogram.types import Message, CallbackQuery
-
-from .messages import HELP_MESSAGE
-from src.logger import logger
-from src.middleware.rate_limiter import check_rate_limit
+from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
 router = Router()
 
+@router.callback_query(F.data == "help_main")
+async def help_menu(callback: CallbackQuery):
+    """Show help menu"""
+    text = (
+        "❓ Help Center\n\n"
+        "Need assistance? Choose a topic:"
+    )
+    
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="❓ How to Shop", callback_data="help_shop")],
+            [InlineKeyboardButton(text="💳 Payment Methods", callback_data="help_payment")],
+            [InlineKeyboardButton(text="📦 Delivery Info", callback_data="help_delivery")],
+            [InlineKeyboardButton(text="⬅️ Back", callback_data="back_main")]
+        ]
+    )
+    
+    await callback.message.edit_text(text, reply_markup=keyboard)
+    await callback.answer()
 
-@router.message(Command("help"))
-async def help_command(message: Message) -> None:
-    """Handle /help command"""
-    allowed, warn = check_rate_limit(message.from_user.id, with_warning=True)
-    if not allowed:
-        await message.answer("⏱️ Too many requests. Wait 30 seconds.")
-        return
-    if warn:
-        await message.answer("⚠️ You're sending too many requests. Slow down.")
-    try:
-        await message.answer(HELP_MESSAGE, parse_mode="HTML")
-    except Exception as exc:
-        logger.error("Error in help_command: %s", exc)
-        await message.answer("❌ Something went wrong. Try again.")
+@router.callback_query(F.data == "help_shop")
+async def help_shop(callback: CallbackQuery):
+    """Help: How to shop"""
+    text = (
+        "🛍️ How to Shop\n\n"
+        "1️⃣ Browse Catalog - View all categories\n"
+        "2️⃣ Select Product - Click on product to see details\n"
+        "3️⃣ Add to Cart - Click 'Add to Cart' button\n"
+        "4️⃣ View Cart - Check your items\n"
+        "5️⃣ Checkout - Choose payment method\n"
+        "6️⃣ Confirm - Complete your order\n\n"
+        "That's it! 🎉"
+    )
+    
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="⬅️ Back", callback_data="help_main")]
+        ]
+    )
+    
+    await callback.message.edit_text(text, reply_markup=keyboard)
+    await callback.answer()
 
+@router.callback_query(F.data == "help_payment")
+async def help_payment(callback: CallbackQuery):
+    """Help: Payment methods"""
+    text = (
+        "💳 Payment Methods\n\n"
+        "We accept:\n\n"
+        "💰 Account Credits\n"
+        "   - Top up your account balance\n"
+        "   - Pay directly from wallet\n\n"
+        "💳 Credit/Debit Card\n"
+        "   - Secure payment processing\n"
+        "   - Instant confirmation\n\n"
+        "All payments are secure and encrypted."
+    )
+    
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="⬅️ Back", callback_data="help_main")]
+        ]
+    )
+    
+    await callback.message.edit_text(text, reply_markup=keyboard)
+    await callback.answer()
 
-@router.callback_query(F.data == "help")
-async def help_callback(query: CallbackQuery) -> None:
-    allowed, warn = check_rate_limit(query.from_user.id, with_warning=True)
-    if not allowed:
-        await query.answer("⏱️ Too many requests. Wait 30 seconds.", show_alert=True)
-        return
-    if warn:
-        await query.answer("⚠️ You're sending too many requests. Slow down.", show_alert=True)
-    try:
-        await query.message.edit_text(HELP_MESSAGE, parse_mode="HTML")
-        await query.answer()
-    except Exception as exc:
-        logger.error("Error in help_callback: %s", exc)
-        await query.answer("❌ Something went wrong. Try again.", show_alert=True)
+@router.callback_query(F.data == "help_delivery")
+async def help_delivery(callback: CallbackQuery):
+    """Help: Delivery info"""
+    text = (
+        "📦 Delivery Information\n\n"
+        "Order Processing:\n"
+        "⏰ Instant - Most items delivered immediately\n"
+        "⏰ 24 hours - Some items within 24 hours\n\n"
+        "Delivery Methods:\n"
+        "📧 Email - Digital products via email\n"
+        "💬 Chat - Direct message in Telegram\n"
+        "🔗 Link - Access link provided\n\n"
+        "Check your order status in Profile → Order History"
+    )
+    
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="⬅️ Back", callback_data="help_main")]
+        ]
+    )
+    
+    await callback.message.edit_text(text, reply_markup=keyboard)
+    await callback.answer()

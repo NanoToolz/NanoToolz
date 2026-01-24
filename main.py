@@ -1,41 +1,47 @@
+"""
+Telegram Store Bot - Clean rewrite
+Main entry point
+"""
 import asyncio
-from aiogram import Bot
+from aiogram import Bot, Dispatcher
+from aiogram.fsm.storage.memory import MemoryStorage
+from contextlib import asynccontextmanager
 
 from src.config import settings
-from src.database import init_db
-from src.bot import create_dispatcher, set_bot_commands
-from src.seed import seed_dummy_data
-from src.scheduler import start_scheduler
 from src.logger import logger
+from src.database import init_db
+from src.seed import seed_dummy_data
+from src.bot.routers import setup_routers
 
-async def main():
-    """Main bot entry point"""
-    
-    # Initialize database
+
+async def setup_bot():
+    """Initialize database and bot setup"""
     logger.info("🗄️  Initializing database...")
     init_db()
     
-    # Seed dummy data
     logger.info("🌱 Seeding dummy data...")
     seed_dummy_data()
+
+
+async def main():
+    """Main bot entry point"""
+    await setup_bot()
     
-    # Create bot and dispatcher
     logger.info("🤖 Starting bot...")
     bot = Bot(token=settings.BOT_TOKEN)
-    dp = create_dispatcher()
-
-    # Set bot commands
-    await set_bot_commands(bot)
-
-    # Start scheduler
-    start_scheduler()
+    storage = MemoryStorage()
+    dp = Dispatcher(storage=storage)
+    
+    # Setup routers
+    setup_routers(dp)
     
     try:
-        # Start polling
-        logger.info("✅ Bot started! Polling for updates...")
+        logger.info("✅ Bot polling started...")
         await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
     finally:
         await bot.session.close()
+        logger.info("Bot stopped")
+
 
 if __name__ == "__main__":
     try:

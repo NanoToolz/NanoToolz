@@ -1,241 +1,256 @@
-import uuid
-
+"""
+Checkout feature - payment and order creation
+"""
 from aiogram import Router, F
-from aiogram.types import CallbackQuery
+from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from sqlalchemy.orm import Session
 
-from src.config import settings
-from src.database import SessionLocal
-from src.database.models import Order, Payment, User
-from src.services.cart import get_cart_items, get_cart_totals, clear_cart
-from src.services.orders import create_payment_from_cart, complete_payment, cancel_payment
-from src.services.settings import get_setting
-from src.services.pricing import calculate_current_price
+from src.database import get_db
+from src.database.models import User, CartItem, Product, Order, ProductDelivery
 from src.logger import logger
-from src.middleware.rate_limiter import check_rate_limit
-from .messages import (
-    CHECKOUT_EMPTY,
-    CHECKOUT_TITLE,
-    PAYMENT_CHOOSE,
-    PAYMENT_INSTRUCTIONS,
-    PAYMENT_CONFIRMED,
-    PAYMENT_NO_DELIVERY,
-    PAYMENT_CANCELLED,
-)
-from .keyboards import payment_method_keyboard, payment_action_keyboard
 
 router = Router()
 
-
-def _wallet_for_method(db, method: str) -> tuple[str, str]:
-    if method == "usdt_tron":
-        wallet = get_setting(db, "payment_usdt_tron_wallet", settings.PAYMENT_WALLET_TRON)
-        return wallet or settings.PAYMENT_WALLET_TRON, "USDT"
-    wallet = get_setting(db, "payment_ltc_wallet", settings.PAYMENT_WALLET_LTC)
-    return wallet or settings.PAYMENT_WALLET_LTC, "LTC"
-
-
-@router.callback_query(F.data == "checkout")
-async def checkout_start(query: CallbackQuery) -> None:
-    allowed, warn = check_rate_limit(query.from_user.id, with_warning=True)
-    if not allowed:
-        await query.answer("⏱️ Too many requests. Wait 30 seconds.", show_alert=True)
-        return
-    if warn:
-        await query.answer("⚠️ You're sending too many requests. Slow down.", show_alert=True)
-
-    db = SessionLocal()
-    try:
-        items = get_cart_items(db, query.from_user.id)
-        total_usd, total_usdt = get_cart_totals(db, query.from_user.id)
-    except Exception as exc:
-        logger.error("Error in checkout_start: %s", exc)
-        await query.answer("❌ Something went wrong. Try again.", show_alert=True)
-        return
-    finally:
+@router.callback_query(F.data == "checkout_start")
+async def start_checkout(callback: CallbackQuery):
+    """Start checkout process"""
+    db: Session = next(get_db())
+    
+    user = db.query(User).filter(User.telegram_id == callback.from_user.id).first()
+    if not user:
+        await callback.answer("User not found", show_alert=True)
         db.close()
-
-    if not items:
-        await query.message.edit_text(CHECKOUT_EMPTY, parse_mode="HTML")
-        await query.answer()
         return
-
-    await query.message.edit_text(
-        f"{CHECKOUT_TITLE.format(usd=total_usd, usdt=total_usdt)}\n\n{PAYMENT_CHOOSE}",
-        parse_mode="HTML",
-        reply_markup=payment_method_keyboard(),
+    
+    cart_items = db.query(CartItem).filter(CartItem.user_id == user.id).all()
+    
+    if not cart_items:
+        await callback.answer("Cart is empty!", show_alert=True)
+        db.close()
+        return
+    
+    # Calculate total
+    total = 0
+    for item in cart_items:
+        product = db.query(Product).filter(Product.id == item.product_id).first()
+        if product:
+            total += float(product.price_usd) * item.quantity
+    
+    # Show payment methods
+    text = (
+        f"💳 Checkout Summary\n\n"
+        f"Items: {len(cart_items)}\n"
+        f"Total: ${total:.2f}\n\n"
+        f"Select a payment method:"
     )
-    await query.answer()
+    
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="💳 Card (Simulated)", callback_data="pay_card")],
+            [InlineKeyboardButton(text="💰 Credits", callback_data="pay_credits")],
+            [InlineKeyboardButton(text="⬅️ Cancel", callback_data="cart_view")]
+        ]
+    )
+    
+    await callback.message.edit_text(text, reply_markup=keyboard)
+    await callback.answer()
+    db.close()
 
-
-@router.callback_query(F.data.startswith("pay_"))
-async def checkout_payment(query: CallbackQuery) -> None:
-    allowed, warn = check_rate_limit(query.from_user.id, with_warning=True)
-    if not allowed:
-        await query.answer("⏱️ Too many requests. Wait 30 seconds.", show_alert=True)
+@router.callback_query(F.data == "pay_card")
+async def pay_with_card(callback: CallbackQuery):
+    """Payment with card (simulated)"""
+    db: Session = next(get_db())
+    
+    user = db.query(User).filter(User.telegram_id == callback.from_user.id).first()
+    if not user:
+        await callback.answer("User not found", show_alert=True)
+        db.close()
         return
-    if warn:
-        await query.answer("⚠️ You're sending too many requests. Slow down.", show_alert=True)
-
-    parts = query.data.split("_")
-    if len(parts) >= 3 and parts[1] == "usdt" and parts[2] == "tron":
-        method = "usdt_tron"
-    elif len(parts) >= 2 and parts[1] == "credits":
-        method = "credits"
-    else:
-        method = "ltc"
-
-    db = SessionLocal()
+    
+    cart_items = db.query(CartItem).filter(CartItem.user_id == user.id).all()
+    
+    if not cart_items:
+        await callback.answer("Cart is empty!", show_alert=True)
+        db.close()
+        return
+    
+    # Create orders from cart items
     try:
-        items = get_cart_items(db, query.from_user.id)
-        if not items:
-            await query.message.edit_text(CHECKOUT_EMPTY, parse_mode="HTML")
-            await query.answer()
-            return
+        delivery_messages = []
+        for item in cart_items:
+            product = db.query(Product).filter(Product.id == item.product_id).first()
+            if product:
+                delivery_text = None
+                delivery_items = (
+                    db.query(ProductDelivery)
+                    .filter(ProductDelivery.product_id == product.id, ProductDelivery.used == False)
+                    .limit(item.quantity)
+                    .all()
+                )
+                if delivery_items:
+                    for delivery_item in delivery_items:
+                        delivery_item.used = True
+                    delivery_text = "\n".join([d.delivery_content for d in delivery_items])
+                    delivery_messages.append(
+                        f"📦 {product.name}\n{delivery_text}"
+                    )
 
-        total_usd, total_usdt = get_cart_totals(db, query.from_user.id)
-        if method == "credits":
-            user = db.query(User).filter(User.telegram_id == query.from_user.id).first()
-            if not user:
-                await query.answer("❌ User not found.", show_alert=True)
-                return
-            if float(user.credits) < total_usd:
-                await query.answer("❌ Insufficient credits.", show_alert=True)
-                return
-
-            payment_ref = uuid.uuid4().hex
-            for item in items:
-                product_price_usd = calculate_current_price(item.product, "USD")
-                product_price_usdt = calculate_current_price(item.product, "USDT")
-                price_usd = product_price_usd * item.quantity
-                price_usdt = product_price_usdt * item.quantity
                 order = Order(
                     user_id=user.id,
-                    product_id=item.product_id,
+                    product_id=product.id,
                     quantity=item.quantity,
-                    price_paid_usd=price_usd,
-                    price_paid_usdt=price_usdt,
-                    payment_method="credits",
-                    payment_ref=payment_ref,
+                    price_paid_usd=float(product.price_usd) * item.quantity,
+                    price_paid_usdt=float(product.price_usdt) * item.quantity if product.price_usdt else 0,
+                    payment_method="card",
                     payment_status="completed",
-                    delivery_status="pending",
+                    delivery_status="delivered" if delivery_text else "pending"
                 )
                 db.add(order)
+                product.sales_count += item.quantity
+        
+        # Clear cart
+        for item in cart_items:
+            db.delete(item)
+        
+        db.commit()
+        
+        delivery_block = "\n\n".join(delivery_messages) if delivery_messages else ""
+        text = (
+            "✅ Payment Successful!\n\n"
+            "Your order has been confirmed.\n"
+            "You will receive your items shortly.\n\n"
+            "Thank you for your purchase! 🎉"
+        )
 
-            user.credits = float(user.credits) - total_usd
-            db.add(
-                Payment(
-                    user_id=user.id,
-                    payment_ref=payment_ref,
-                    amount=total_usd,
-                    currency="USD",
-                    method="credits",
-                    status="confirmed",
-                    confirmations=0,
+        if delivery_block:
+            text += f"\n\n🎁 Delivery:\n{delivery_block}"
+        
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="🏠 Back to Home", callback_data="back_main")]
+            ]
+        )
+        
+        await callback.message.edit_text(text, reply_markup=keyboard)
+        await callback.answer("Order created successfully!", show_alert=False)
+        logger.info(f"Order completed for user {user.telegram_id}")
+        
+    except Exception as e:
+        logger.error(f"Checkout error: {e}")
+        await callback.answer("Error processing order", show_alert=True)
+    
+    db.close()
+
+@router.callback_query(F.data == "pay_credits")
+async def pay_with_credits(callback: CallbackQuery):
+    """Payment with account credits"""
+    db: Session = next(get_db())
+    
+    user = db.query(User).filter(User.telegram_id == callback.from_user.id).first()
+    if not user:
+        await callback.answer("User not found", show_alert=True)
+        db.close()
+        return
+    
+    cart_items = db.query(CartItem).filter(CartItem.user_id == user.id).all()
+    
+    if not cart_items:
+        await callback.answer("Cart is empty!", show_alert=True)
+        db.close()
+        return
+    
+    # Calculate total
+    total = 0
+    for item in cart_items:
+        product = db.query(Product).filter(Product.id == item.product_id).first()
+        if product:
+            total += float(product.price_usd) * item.quantity
+    
+    # Check if user has enough credits
+    if float(user.credits) < total:
+        needed = total - float(user.credits)
+        text = (
+            f"❌ Insufficient Credits\n\n"
+            f"Your Balance: ${user.credits:.2f}\n"
+            f"Need: ${total:.2f}\n"
+            f"Missing: ${needed:.2f}"
+        )
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="⬅️ Try Another Method", callback_data="checkout_start")]
+            ]
+        )
+        await callback.message.edit_text(text, reply_markup=keyboard)
+        db.close()
+        return
+    
+    # Process payment
+    try:
+        delivery_messages = []
+        for item in cart_items:
+            product = db.query(Product).filter(Product.id == item.product_id).first()
+            if product:
+                delivery_text = None
+                delivery_items = (
+                    db.query(ProductDelivery)
+                    .filter(ProductDelivery.product_id == product.id, ProductDelivery.used == False)
+                    .limit(item.quantity)
+                    .all()
                 )
-            )
-            db.commit()
-            clear_cart(db, query.from_user.id)
-            deliveries = complete_payment(db, payment_ref)
+                if delivery_items:
+                    for delivery_item in delivery_items:
+                        delivery_item.used = True
+                    delivery_text = "\n".join([d.delivery_content for d in delivery_items])
+                    delivery_messages.append(
+                        f"📦 {product.name}\n{delivery_text}"
+                    )
 
-            if deliveries:
-                lines = [PAYMENT_CONFIRMED]
-                for delivery in deliveries:
-                    lines.append(f"\n<b>{delivery['product_name']}</b>\n{delivery['content']}")
-                message = "".join(lines)
-            else:
-                message = PAYMENT_NO_DELIVERY
-
-            await query.message.edit_text(message, parse_mode="HTML")
-            await query.answer()
-            return
-
-        wallet, currency = _wallet_for_method(db, method)
-        payment = create_payment_from_cart(
-            db,
-            user_id=query.from_user.id,
-            items=items,
-            method=method,
-            currency=currency,
-            wallet_to=wallet,
+                order = Order(
+                    user_id=user.id,
+                    product_id=product.id,
+                    quantity=item.quantity,
+                    price_paid_usd=float(product.price_usd) * item.quantity,
+                    price_paid_usdt=0,
+                    credits_used=float(product.price_usd) * item.quantity,
+                    payment_method="credits",
+                    payment_status="completed",
+                    delivery_status="delivered" if delivery_text else "pending"
+                )
+                db.add(order)
+                product.sales_count += item.quantity
+        
+        # Deduct credits
+        user.credits -= total
+        
+        # Clear cart
+        for item in cart_items:
+            db.delete(item)
+        
+        db.commit()
+        
+        delivery_block = "\n\n".join(delivery_messages) if delivery_messages else ""
+        text = (
+            "✅ Payment Successful!\n\n"
+            f"Credits Used: ${total:.2f}\n"
+            f"New Balance: ${user.credits:.2f}\n\n"
+            "Your order has been confirmed."
         )
-        clear_cart(db, query.from_user.id)
-        notice = get_setting(
-            db,
-            "payment_notice",
-            "Send the exact amount and tap 'I Paid' after payment.",
+
+        if delivery_block:
+            text += f"\n\n🎁 Delivery:\n{delivery_block}"
+        
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="🏠 Back to Home", callback_data="back_main")]
+            ]
         )
-    except Exception as exc:
-        logger.error("Error in checkout_payment: %s", exc)
-        await query.answer("❌ Something went wrong. Try again.", show_alert=True)
-        return
-    finally:
-        db.close()
-
-    await query.message.edit_text(
-        PAYMENT_INSTRUCTIONS.format(
-            amount=float(payment.amount),
-            currency=payment.currency,
-            wallet=wallet,
-            notice=notice,
-            payment_ref=payment.payment_ref,
-        ),
-        parse_mode="HTML",
-        reply_markup=payment_action_keyboard(payment.payment_ref),
-    )
-    await query.answer()
-
-
-@router.callback_query(F.data.startswith("confirm_pay_"))
-async def confirm_payment(query: CallbackQuery) -> None:
-    allowed, warn = check_rate_limit(query.from_user.id, with_warning=True)
-    if not allowed:
-        await query.answer("⏱️ Too many requests. Wait 30 seconds.", show_alert=True)
-        return
-    if warn:
-        await query.answer("⚠️ You're sending too many requests. Slow down.", show_alert=True)
-
-    payment_ref = query.data.split("_")[2]
-    db = SessionLocal()
-    try:
-        deliveries = complete_payment(db, payment_ref)
-    except Exception as exc:
-        logger.error("Error in confirm_payment: %s", exc)
-        await query.answer("❌ Something went wrong. Try again.", show_alert=True)
-        return
-    finally:
-        db.close()
-
-    if deliveries:
-        lines = [PAYMENT_CONFIRMED]
-        for delivery in deliveries:
-            lines.append(f"\n<b>{delivery['product_name']}</b>\n{delivery['content']}")
-        message = "".join(lines)
-    else:
-        message = PAYMENT_NO_DELIVERY
-
-    await query.message.edit_text(message, parse_mode="HTML")
-    await query.answer()
-
-
-@router.callback_query(F.data.startswith("cancel_pay_"))
-async def cancel_payment_handler(query: CallbackQuery) -> None:
-    allowed, warn = check_rate_limit(query.from_user.id, with_warning=True)
-    if not allowed:
-        await query.answer("⏱️ Too many requests. Wait 30 seconds.", show_alert=True)
-        return
-    if warn:
-        await query.answer("⚠️ You're sending too many requests. Slow down.", show_alert=True)
-
-    payment_ref = query.data.split("_")[2]
-    db = SessionLocal()
-    try:
-        cancel_payment(db, payment_ref)
-    except Exception as exc:
-        logger.error("Error in cancel_payment_handler: %s", exc)
-        await query.answer("❌ Something went wrong. Try again.", show_alert=True)
-        return
-    finally:
-        db.close()
-
-    await query.message.edit_text(PAYMENT_CANCELLED, parse_mode="HTML")
-    await query.answer()
+        
+        await callback.message.edit_text(text, reply_markup=keyboard)
+        await callback.answer("Order created successfully!", show_alert=False)
+        logger.info(f"Order completed with credits for user {user.telegram_id}")
+        
+    except Exception as e:
+        logger.error(f"Checkout error: {e}")
+        await callback.answer("Error processing order", show_alert=True)
+    
+    db.close()

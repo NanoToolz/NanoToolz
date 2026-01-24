@@ -1,199 +1,127 @@
+"""
+Cart feature - manage shopping cart
+"""
 from aiogram import Router, F
-from aiogram.filters import Command
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from sqlalchemy.orm import Session
 
-from src.database import SessionLocal
-from src.services.cart import get_cart_items, get_cart_totals, update_quantity, remove_item, clear_cart
-from src.services.pricing import calculate_current_price
+from src.database import get_db
+from src.database.models import User, CartItem, Product
 from src.logger import logger
-from src.middleware.rate_limiter import check_rate_limit
-from .messages import CART_EMPTY, CART_TITLE, CART_TOTAL
-from .keyboards import cart_keyboard
 
 router = Router()
 
-
-def _build_cart_message(items, total_usd: float, total_usdt: float) -> str:
-    lines = [CART_TITLE, ""]
-    for item in items:
-        current_price = calculate_current_price(item.product, "USD")
-        price = current_price * item.quantity
-        lines.append(f"• {item.product.name} x{item.quantity} = ${price:.2f}")
-    lines.append(CART_TOTAL.format(usd=total_usd, usdt=total_usdt))
-    return "\n".join(lines)
-
-
-@router.callback_query(F.data == "cart")
-async def cart_view(query: CallbackQuery) -> None:
-    allowed, warn = check_rate_limit(query.from_user.id, with_warning=True)
-    if not allowed:
-        await query.answer("⏱️ Too many requests. Wait 30 seconds.", show_alert=True)
-        return
-    if warn:
-        await query.answer("⚠️ You're sending too many requests. Slow down.", show_alert=True)
-
-    db = SessionLocal()
-    try:
-        items = get_cart_items(db, query.from_user.id)
-        total_usd, total_usdt = get_cart_totals(db, query.from_user.id)
-        if not items:
-            message = CART_EMPTY
-            keyboard = None
-        else:
-            message = _build_cart_message(items, total_usd, total_usdt)
-            keyboard = cart_keyboard(items)
-    except Exception as exc:
-        logger.error("Error in cart_view: %s", exc)
-        await query.answer("❌ Something went wrong. Try again.", show_alert=True)
-        return
-    finally:
+@router.callback_query(F.data == "cart_view")
+async def view_cart(callback: CallbackQuery):
+    """View shopping cart"""
+    db: Session = next(get_db())
+    
+    user = db.query(User).filter(User.telegram_id == callback.from_user.id).first()
+    if not user:
+        await callback.answer("User not found", show_alert=True)
         db.close()
-
-    if not items:
-        await query.message.edit_text(message, parse_mode="HTML")
-        await query.answer()
         return
-
-    await query.message.edit_text(
-        message,
-        parse_mode="HTML",
-        reply_markup=keyboard,
+    
+    cart_items = db.query(CartItem).filter(CartItem.user_id == user.id).all()
+    
+    if not cart_items:
+        text = "🛒 Your cart is empty!\n\nBrowse our catalog to add items."
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="🛍️ Browse Catalog", callback_data="catalog_main")],
+                [InlineKeyboardButton(text="⬅️ Back", callback_data="back_main")]
+            ]
+        )
+        await callback.message.edit_text(text, reply_markup=keyboard)
+        db.close()
+        return
+    
+    # Build cart display
+    total = 0
+    cart_text = "🛒 Your Cart:\n\n"
+    buttons = []
+    
+    for item in cart_items:
+        product = db.query(Product).filter(Product.id == item.product_id).first()
+        if product:
+            subtotal = float(product.price_usd) * item.quantity
+            total += subtotal
+            cart_text += f"📦 {product.name}\n  Qty: {item.quantity} x ${product.price_usd} = ${subtotal:.2f}\n\n"
+            buttons.append([
+                InlineKeyboardButton(text=f"➖ {product.name}", callback_data=f"rem_{item.id}"),
+                InlineKeyboardButton(text=f"✏️ {item.quantity}", callback_data=f"upd_{item.id}")
+            ])
+    
+    cart_text += f"\n💰 Total: ${total:.2f}"
+    
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=buttons + [
+            [InlineKeyboardButton(text="🛒 Continue Shopping", callback_data="catalog_main")],
+            [InlineKeyboardButton(text="✅ Checkout", callback_data="checkout_start")],
+            [InlineKeyboardButton(text="⬅️ Back", callback_data="back_main")]
+        ]
     )
-    await query.answer()
+    
+    await callback.message.edit_text(cart_text, reply_markup=keyboard)
+    await callback.answer()
+    db.close()
 
+@router.callback_query(F.data.startswith("rem_"))
+async def remove_from_cart(callback: CallbackQuery):
+    """Remove item from cart"""
+    db: Session = next(get_db())
+    
+    item_id = int(callback.data.split("_")[1])
+    cart_item = db.query(CartItem).filter(CartItem.id == item_id).first()
+    
+    if cart_item:
+        db.delete(cart_item)
+        db.commit()
+        await callback.answer("✅ Item removed", show_alert=False)
+        logger.info(f"Item {item_id} removed from cart")
+    else:
+        await callback.answer("Item not found", show_alert=True)
+    
+    # Refresh cart view
+    await view_cart(callback)
+    db.close()
 
-@router.message(Command("cart"))
-async def cart_view_command(message: Message) -> None:
-    allowed, warn = check_rate_limit(message.from_user.id, with_warning=True)
-    if not allowed:
-        await message.answer("⏱️ Too many requests. Wait 30 seconds.")
-        return
-    if warn:
-        await message.answer("⚠️ You're sending too many requests. Slow down.")
+@router.callback_query(F.data.startswith("upd_"))
+async def update_quantity(callback: CallbackQuery):
+    """Cycle through quantity options"""
+    db: Session = next(get_db())
+    
+    item_id = int(callback.data.split("_")[1])
+    cart_item = db.query(CartItem).filter(CartItem.id == item_id).first()
+    
+    if cart_item:
+        # Cycle: 1 -> 2 -> 3 -> 5 -> 10 -> 1
+        qty_options = [1, 2, 3, 5, 10]
+        current_idx = qty_options.index(cart_item.quantity) if cart_item.quantity in qty_options else 0
+        next_idx = (current_idx + 1) % len(qty_options)
+        cart_item.quantity = qty_options[next_idx]
+        db.commit()
+        await callback.answer(f"Qty: {cart_item.quantity}", show_alert=False)
+    
+    # Refresh cart
+    await view_cart(callback)
+    db.close()
 
-    db = SessionLocal()
-    try:
-        items = get_cart_items(db, message.from_user.id)
-        total_usd, total_usdt = get_cart_totals(db, message.from_user.id)
-        if not items:
-            response = CART_EMPTY
-            keyboard = None
-        else:
-            response = _build_cart_message(items, total_usd, total_usdt)
-            keyboard = cart_keyboard(items)
-    except Exception as exc:
-        logger.error("Error in cart_view_command: %s", exc)
-        await message.answer("❌ Something went wrong. Try again.")
-        return
-    finally:
-        db.close()
-
-    if not items:
-        await message.answer(response, parse_mode="HTML")
-        return
-
-    await message.answer(
-        response,
-        parse_mode="HTML",
-        reply_markup=keyboard,
+@router.callback_query(F.data == "back_main")
+async def back_to_main(callback: CallbackQuery):
+    """Go back to main menu"""
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🛍️ Browse Catalog", callback_data="catalog_main")],
+            [InlineKeyboardButton(text="🛒 View Cart", callback_data="cart_view")],
+            [InlineKeyboardButton(text="� Topup", callback_data="topup")],
+            [InlineKeyboardButton(text="🎁 Daily Spin", callback_data="daily_spin")],
+            [InlineKeyboardButton(text="�👤 Profile", callback_data="profile_view")],
+            [InlineKeyboardButton(text="📞 Support", callback_data="support")],
+            [InlineKeyboardButton(text="❓ Help", callback_data="help_main")],
+            [InlineKeyboardButton(text="🔐 Admin Panel", callback_data="admin_panel")]
+        ]
     )
-
-
-@router.callback_query(F.data == "cart_clear")
-async def cart_clear(query: CallbackQuery) -> None:
-    allowed, warn = check_rate_limit(query.from_user.id, with_warning=True)
-    if not allowed:
-        await query.answer("⏱️ Too many requests. Wait 30 seconds.", show_alert=True)
-        return
-    if warn:
-        await query.answer("⚠️ You're sending too many requests. Slow down.", show_alert=True)
-
-    db = SessionLocal()
-    try:
-        clear_cart(db, query.from_user.id)
-    except Exception as exc:
-        logger.error("Error in cart_clear: %s", exc)
-        await query.answer("❌ Something went wrong. Try again.", show_alert=True)
-        return
-    finally:
-        db.close()
-    await cart_view(query)
-
-
-@router.callback_query(F.data.startswith("cart_inc_"))
-async def cart_inc(query: CallbackQuery) -> None:
-    item_id = int(query.data.split("_")[2])
-    allowed, warn = check_rate_limit(query.from_user.id, with_warning=True)
-    if not allowed:
-        await query.answer("⏱️ Too many requests. Wait 30 seconds.", show_alert=True)
-        return
-    if warn:
-        await query.answer("⚠️ You're sending too many requests. Slow down.", show_alert=True)
-
-    db = SessionLocal()
-    try:
-        update_quantity(db, item_id, 1)
-    except Exception as exc:
-        logger.error("Error in cart_inc: %s", exc)
-        await query.answer("❌ Something went wrong. Try again.", show_alert=True)
-        return
-    finally:
-        db.close()
-    await cart_view(query)
-
-
-@router.callback_query(F.data.startswith("cart_dec_"))
-async def cart_dec(query: CallbackQuery) -> None:
-    item_id = int(query.data.split("_")[2])
-    allowed, warn = check_rate_limit(query.from_user.id, with_warning=True)
-    if not allowed:
-        await query.answer("⏱️ Too many requests. Wait 30 seconds.", show_alert=True)
-        return
-    if warn:
-        await query.answer("⚠️ You're sending too many requests. Slow down.", show_alert=True)
-
-    db = SessionLocal()
-    try:
-        update_quantity(db, item_id, -1)
-    except Exception as exc:
-        logger.error("Error in cart_dec: %s", exc)
-        await query.answer("❌ Something went wrong. Try again.", show_alert=True)
-        return
-    finally:
-        db.close()
-    await cart_view(query)
-
-
-@router.callback_query(F.data.startswith("cart_del_"))
-async def cart_del(query: CallbackQuery) -> None:
-    item_id = int(query.data.split("_")[2])
-    allowed, warn = check_rate_limit(query.from_user.id, with_warning=True)
-    if not allowed:
-        await query.answer("⏱️ Too many requests. Wait 30 seconds.", show_alert=True)
-        return
-    if warn:
-        await query.answer("⚠️ You're sending too many requests. Slow down.", show_alert=True)
-
-    db = SessionLocal()
-    try:
-        remove_item(db, item_id)
-    except Exception as exc:
-        logger.error("Error in cart_del: %s", exc)
-        await query.answer("❌ Something went wrong. Try again.", show_alert=True)
-        return
-    finally:
-        db.close()
-    await cart_view(query)
-
-
-@router.callback_query(F.data == "noop")
-async def noop(query: CallbackQuery) -> None:
-    allowed = check_rate_limit(query.from_user.id)
-    if not allowed:
-        await query.answer("⏱️ Too many requests. Wait 30 seconds.", show_alert=True)
-        return
-    try:
-        await query.answer()
-    except Exception as exc:
-        logger.error("Error in noop: %s", exc)
-        await query.answer("❌ Something went wrong. Try again.", show_alert=True)
+    
+    await callback.message.edit_text("Main Menu - What would you like to do?", reply_markup=keyboard)
+    await callback.answer()

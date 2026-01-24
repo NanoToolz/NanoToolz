@@ -1,112 +1,56 @@
-import uuid
+"""
+Start command handler - entry point for users
+"""
 from aiogram import Router, F
-from aiogram.filters import Command, CommandObject
-from aiogram.types import Message, CallbackQuery
+from aiogram.filters import CommandStart
+from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
+from sqlalchemy.orm import Session
 
-from src.database import SessionLocal
-from src.database.models import User, Referral
-from src.bot.common.keyboards import main_menu_keyboard
-from src.services.settings import get_setting
+from src.database import get_db
+from src.database.models import User
 from src.logger import logger
-from src.middleware.rate_limiter import check_rate_limit
-from .messages import welcome_message
 
 router = Router()
 
-
-@router.message(Command("start"))
-async def start_command(message: Message, command: CommandObject) -> None:
+@router.message(CommandStart())
+async def start_command(message: Message):
     """Handle /start command"""
-    allowed, warn = check_rate_limit(message.from_user.id, with_warning=True)
-    if not allowed:
-        await message.answer("⏱️ Too many requests. Wait 30 seconds.")
-        return
-    if warn:
-        await message.answer("⚠️ You're sending too many requests. Slow down.")
-
-    user_id = message.from_user.id
-    db = SessionLocal()
-    try:
-        user = db.query(User).filter(User.telegram_id == user_id).first()
-        if not user:
-            referral_code = f"ref_{uuid.uuid4().hex[:8]}"
-            user = User(
-                telegram_id=user_id,
-                username=message.from_user.username,
-                first_name=message.from_user.first_name,
-                referral_code=referral_code,
-            )
-            db.add(user)
-            db.commit()
-        if command.args and not user.referred_by_id:
-            ref_user = (
-                db.query(User).filter(User.referral_code == command.args).first()
-            )
-            if ref_user and ref_user.id != user.id:
-                user.referred_by_id = ref_user.id
-                db.add(
-                    Referral(
-                        referrer_id=ref_user.id,
-                        referred_user_id=user.id,
-                        earnings=0,
-                    )
-                )
-                db.commit()
-        store_name = get_setting(db, "store_name", "NanoToolz Store") or "NanoToolz Store"
-    except Exception as exc:
-        logger.error("Error in start_command: %s", exc)
-        await message.answer("❌ Something went wrong. Try again.")
-        return
-    finally:
-        db.close()
-
-    await message.answer(
-        welcome_message(store_name),
-        parse_mode="HTML",
-        reply_markup=main_menu_keyboard(),
-    )
-
-
-@router.callback_query(F.data == "main_menu")
-async def main_menu_callback(query: CallbackQuery) -> None:
-    """Return to main menu"""
-    allowed, warn = check_rate_limit(query.from_user.id, with_warning=True)
-    if not allowed:
-        await query.answer("⏱️ Too many requests. Wait 30 seconds.", show_alert=True)
-        return
-    if warn:
-        await query.answer("⚠️ You're sending too many requests. Slow down.", show_alert=True)
-
-    db = SessionLocal()
-    try:
-        store_name = get_setting(db, "store_name", "NanoToolz Store") or "NanoToolz Store"
-    except Exception as exc:
-        logger.error("Error in main_menu_callback: %s", exc)
-        await query.answer("❌ Something went wrong. Try again.", show_alert=True)
-        return
-    finally:
-        db.close()
-    await query.message.edit_text(
-        welcome_message(store_name),
-        parse_mode="HTML",
-        reply_markup=main_menu_keyboard(),
-    )
-    await query.answer()
-
-
-@router.message()
-async def fallback_handler(message: Message) -> None:
-    """Fallback for unhandled messages"""
-    allowed = check_rate_limit(message.from_user.id)
-    if not allowed:
-        await message.answer("⏱️ Too many requests. Wait 30 seconds.")
-        return
-    if message.text and message.text.startswith("/"):
-        return
-    try:
-        await message.answer(
-            "I didn't understand that. Use /help for available commands or choose from the menu.",
-            reply_markup=main_menu_keyboard(),
+    db: Session = next(get_db())
+    
+    # Check if user exists
+    user = db.query(User).filter(User.telegram_id == message.from_user.id).first()
+    
+    if not user:
+        # Create new user
+        user = User(
+            telegram_id=message.from_user.id,
+            username=message.from_user.username,
+            first_name=message.from_user.first_name
         )
-    except Exception as exc:
-        logger.error("Error in fallback_handler: %s", exc)
+        db.add(user)
+        db.commit()
+        logger.info(f"New user registered: {message.from_user.id}")
+    
+    # Send welcome message
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🛍️ Browse Catalog", callback_data="catalog_main")],
+            [InlineKeyboardButton(text="🛒 View Cart", callback_data="cart_view")],
+            [InlineKeyboardButton(text="� Topup", callback_data="topup")],
+            [InlineKeyboardButton(text="🎁 Daily Spin", callback_data="daily_spin")],
+            [InlineKeyboardButton(text="�👤 Profile", callback_data="profile_view")],
+            [InlineKeyboardButton(text="📞 Support", callback_data="support")],
+            [InlineKeyboardButton(text="❓ Help", callback_data="help_main")],
+            [InlineKeyboardButton(text="🔐 Admin Panel", callback_data="admin_panel")]
+        ]
+    )
+    
+    welcome_text = (
+        f"Welcome to NanoToolz Store! 🎉\n\n"
+        f"Hi {message.from_user.first_name or 'User'}!\n\n"
+        f"Browse our catalog, add items to cart, and checkout easily.\n\n"
+        f"What would you like to do?"
+    )
+    
+    await message.answer(welcome_text, reply_markup=keyboard)
+    db.close()

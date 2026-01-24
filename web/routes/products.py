@@ -1,6 +1,6 @@
 from html import escape
 
-from fastapi import APIRouter, Depends, Form
+from fastapi import APIRouter, Depends, Form, UploadFile, File
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
@@ -27,7 +27,7 @@ async def products_page(credentials=Depends(security), db: Session = Depends(get
     body = f"""
     <div class=\"section\">
         <h2>Add Product</h2>
-        <form method=\"post\" action=\"/admin/products/create\">
+        <form method=\"post\" action=\"/admin/products/create\" enctype=\"multipart/form-data\">
             <label>Name</label>
             <input name=\"name\" required />
             <label>Category</label>
@@ -52,6 +52,8 @@ async def products_page(credentials=Depends(security), db: Session = Depends(get
             </select>
             <label>Image URL</label>
             <input name=\"image_url\" />
+            <label>Upload Image</label>
+            <input type=\"file\" name=\"image_file\" accept=\"image/*\" />
             <label>Affiliate Commission (%)</label>
             <input name=\"affiliate_commission\" value=\"0\" />
             <button class=\"btn btn-primary\" type=\"submit\">Create</button>
@@ -114,11 +116,23 @@ async def create_product(
     stock: str = Form(""),
     status: str = Form("published"),
     image_url: str = Form(""),
+    image_file: UploadFile | None = File(None),
     affiliate_commission: str = Form("0"),
     credentials=Depends(security),
     db: Session = Depends(get_db),
 ):
     verify_admin(credentials)
+
+    if image_file and image_file.filename:
+        import os
+        from datetime import datetime
+
+        ext = os.path.splitext(image_file.filename)[1]
+        filename = f"{datetime.utcnow().timestamp():.0f}{ext}"
+        upload_path = os.path.join("web", "static", "uploads", filename)
+        with open(upload_path, "wb") as buffer:
+            buffer.write(await image_file.read())
+        image_url = f"/static/uploads/{filename}"
 
     product = Product(
         name=name,
@@ -164,7 +178,7 @@ async def product_edit_page(
     body = f"""
     <div class=\"section\">
         <h2>Edit Product #{product.id}</h2>
-        <form method=\"post\" action=\"/admin/products/{product.id}/update\">
+        <form method=\"post\" action=\"/admin/products/{product.id}/update\" enctype=\"multipart/form-data\">
             <label>Name</label>
             <input name=\"name\" value=\"{escape(product.name)}\" required />
             <label>Category</label>
@@ -189,6 +203,8 @@ async def product_edit_page(
             </select>
             <label>Image URL</label>
             <input name=\"image_url\" value=\"{escape(product.image_url or '')}\" />
+            <label>Upload Image</label>
+            <input type=\"file\" name=\"image_file\" accept=\"image/*\" />
             <label>Affiliate Commission (%)</label>
             <input name=\"affiliate_commission\" value=\"{float(product.affiliate_commission or 0):.2f}\" />
             <button class=\"btn btn-primary\" type=\"submit\">Save</button>
@@ -213,6 +229,7 @@ async def update_product(
     stock: str = Form(""),
     status: str = Form("published"),
     image_url: str = Form(""),
+    image_file: UploadFile | None = File(None),
     affiliate_commission: str = Form("0"),
     credentials=Depends(security),
     db: Session = Depends(get_db),
@@ -221,6 +238,17 @@ async def update_product(
 
     product = db.query(Product).filter(Product.id == product_id).first()
     if product:
+        if image_file and image_file.filename:
+            import os
+            from datetime import datetime
+
+            ext = os.path.splitext(image_file.filename)[1]
+            filename = f"{datetime.utcnow().timestamp():.0f}{ext}"
+            upload_path = os.path.join("web", "static", "uploads", filename)
+            with open(upload_path, "wb") as buffer:
+                buffer.write(await image_file.read())
+            image_url = f"/static/uploads/{filename}"
+
         product.name = name
         product.category_id = category_id
         product.description = description

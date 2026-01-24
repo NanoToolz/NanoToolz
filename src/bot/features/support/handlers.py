@@ -109,8 +109,14 @@ async def support_message_handler(message: Message, state: FSMContext) -> None:
     data = await state.get_data()
     db = SessionLocal()
     try:
+        from src.database.models import User
+        user_obj = db.query(User).filter(User.telegram_id == message.from_user.id).first()
+        if not user_obj:
+            await message.answer("❌ User not found. Please /start first.")
+            return
+
         ticket = SupportTicket(
-            user_id=message.from_user.id,
+            user_id=user_obj.id,
             category=data.get("category", "general"),
             subject=data.get("subject", "Support Request"),
             message=message.text or "",

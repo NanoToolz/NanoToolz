@@ -36,8 +36,10 @@ def layout(title: str, body: str) -> HTMLResponse:
     <nav>
         <a href="/admin">Dashboard</a>
         <a href="/admin/products">Products</a>
-        <a href="/admin/pricing">Pricing</a>
         <a href="/admin/categories">Categories</a>
+        <a href="/admin/stock">Stock</a>
+        <a href="/admin/coupons">Coupons</a>
+        <a href="/admin/pricing">Pricing</a>
         <a href="/admin/users">Users</a>
         <a href="/admin/orders">Orders</a>
         <a href="/admin/payments">Payments</a>

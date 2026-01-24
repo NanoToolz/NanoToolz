@@ -207,3 +207,17 @@ class Setting(Base):
     value = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class Coupon(Base):
+    __tablename__ = "coupons"
+
+    id = Column(Integer, primary_key=True, index=True)
+    code = Column(String, unique=True, index=True)
+    discount_type = Column(String, default="percent")  # percent, fixed
+    value = Column(DECIMAL(10, 2), default=0)
+    usage_limit = Column(Integer, default=0)
+    used_count = Column(Integer, default=0)
+    active = Column(Boolean, default=True)
+    expires_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)

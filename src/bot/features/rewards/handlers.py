@@ -26,10 +26,15 @@ async def daily_spin_callback(query: CallbackQuery) -> None:
     db = SessionLocal()
     try:
         today = date.today()
+        user = db.query(User).filter(User.telegram_id == query.from_user.id).first()
+        if not user:
+            await query.answer("❌ User not found.", show_alert=True)
+            return
+
         spin_today = (
             db.query(DailySpin)
             .filter(
-                DailySpin.user_id == query.from_user.id,
+                DailySpin.user_id == user.id,
                 DailySpin.spin_date >= datetime(today.year, today.month, today.day),
             )
             .first()
@@ -48,15 +53,13 @@ async def daily_spin_callback(query: CallbackQuery) -> None:
         reward_type, reward_value = random.choice(rewards)
 
         spin = DailySpin(
-            user_id=query.from_user.id,
+            user_id=user.id,
             reward_type=reward_type,
             reward_value=reward_value,
         )
         db.add(spin)
         if reward_type == "credits":
-            user = db.query(User).filter(User.telegram_id == query.from_user.id).first()
-            if user:
-                user.credits = float(user.credits) + reward_value
+            user.credits = float(user.credits) + reward_value
         db.commit()
     except Exception as exc:
         logger.error("Error in daily_spin_callback: %s", exc)

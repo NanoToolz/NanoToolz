@@ -78,8 +78,13 @@ async def topup_select_amount(query: CallbackQuery) -> None:
     try:
         payment_ref = uuid.uuid4().hex
         wallet = get_setting(db, "payment_usdt_tron_wallet", settings.PAYMENT_WALLET_TRON)
+        user = db.query(User).filter(User.telegram_id == query.from_user.id).first()
+        if not user:
+            await query.answer("❌ User not found.", show_alert=True)
+            return
+
         payment = Payment(
-            user_id=query.from_user.id,
+            user_id=user.id,
             payment_ref=payment_ref,
             amount=amount_usdt,
             currency="USDT",

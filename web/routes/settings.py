@@ -1,3 +1,4 @@
+import json
 from html import escape
 
 from fastapi import APIRouter, Depends, Form
@@ -11,6 +12,27 @@ from web.auth import verify_admin, security
 from web.routes.utils import layout
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+SAMPLE_MENU_CONFIG = [
+    [
+        {"text": "Shop", "callback_data": "browse"},
+        {"text": "Cart", "callback_data": "cart"},
+    ],
+    [
+        {"text": "Top Up", "callback_data": "topup"},
+        {"text": "Profile", "callback_data": "profile"},
+    ],
+    [
+        {"text": "Wishlist", "callback_data": "wishlist"},
+        {"text": "Rewards", "callback_data": "daily_spin"},
+    ],
+    [
+        {"text": "Referrals", "callback_data": "referrals"},
+        {"text": "Help", "callback_data": "help"},
+    ],
+    [{"text": "Support", "callback_data": "support"}],
+]
+SAMPLE_MENU_JSON = json.dumps(SAMPLE_MENU_CONFIG, indent=2)
 
 
 def fetch_setting(db: Session, key: str, default: str) -> str:
@@ -37,6 +59,8 @@ async def settings_page(credentials=Depends(security), db: Session = Depends(get
     commission_rate = fetch_setting(db, "commission_rate", "10")
     tax_percent = fetch_setting(db, "tax_percent", "0")
     maintenance_mode = fetch_setting(db, "maintenance_mode", "off")
+    welcome_message = fetch_setting(db, "welcome_message", "")
+    main_menu_buttons = fetch_setting(db, "main_menu_buttons", "")
 
     body = f"""
     <div class=\"section\">
@@ -61,6 +85,14 @@ async def settings_page(credentials=Depends(security), db: Session = Depends(get
                 <option value=\"off\" {'selected' if maintenance_mode == 'off' else ''}>Off</option>
                 <option value=\"on\" {'selected' if maintenance_mode == 'on' else ''}>On</option>
             </select>
+            <h3>Bot UI</h3>
+            <label>Welcome Message (HTML)</label>
+            <textarea name=\"welcome_message\">{escape(welcome_message)}</textarea>
+            <div class=\"muted\">Tip: use {{store_name}} to insert the store name. Leave empty to use default.</div>
+            <label>Main Menu Buttons (JSON)</label>
+            <textarea name=\"main_menu_buttons\">{escape(main_menu_buttons)}</textarea>
+            <div class=\"muted\">Format: list of rows with buttons. Each button needs text + callback_data or url.</div>
+            <pre class=\"muted\">{escape(SAMPLE_MENU_JSON)}</pre>
             <button class=\"btn btn-primary\" type=\"submit\">Save</button>
         </form>
     </div>
@@ -79,6 +111,8 @@ async def settings_update(
     commission_rate: str = Form("10"),
     tax_percent: str = Form("0"),
     maintenance_mode: str = Form("off"),
+    welcome_message: str = Form(""),
+    main_menu_buttons: str = Form(""),
     credentials=Depends(security),
     db: Session = Depends(get_db),
 ):
@@ -92,6 +126,8 @@ async def settings_update(
     upsert_setting(db, "commission_rate", commission_rate)
     upsert_setting(db, "tax_percent", tax_percent)
     upsert_setting(db, "maintenance_mode", maintenance_mode)
+    upsert_setting(db, "welcome_message", welcome_message)
+    upsert_setting(db, "main_menu_buttons", main_menu_buttons)
     db.commit()
 
     return RedirectResponse("/admin/settings", status_code=303)

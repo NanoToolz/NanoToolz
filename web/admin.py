@@ -1,15 +1,18 @@
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from src.database import init_db
 from web.routes import (
     analytics_router,
     categories_router,
+    coupons_router,
     dashboard_router,
     orders_router,
     payments_router,
     pricing_router,
     products_router,
     settings_router,
+    stock_router,
     support_router,
     system_router,
     topups_router,
@@ -17,6 +20,7 @@ from web.routes import (
 )
 
 app = FastAPI(title="NanoToolz Admin Panel", version="2.0.0")
+app.mount("/static", StaticFiles(directory="web/static"), name="static")
 
 
 @app.on_event("startup")
@@ -28,6 +32,8 @@ app.include_router(dashboard_router)
 app.include_router(products_router)
 app.include_router(pricing_router)
 app.include_router(categories_router)
+app.include_router(stock_router)
+app.include_router(coupons_router)
 app.include_router(users_router)
 app.include_router(orders_router)
 app.include_router(payments_router)
