@@ -159,7 +159,10 @@ async def start_add_stock(callback: CallbackQuery, state: FSMContext):
 
 @router.message(StockStates.waiting_for_keys)
 async def receive_stock_keys(message: Message, state: FSMContext):
-    if not is_admin(message.from_user.id): return
+    if not is_admin(message.from_user.id): 
+        await message.answer("❌ Unauthorized")
+        await state.clear()
+        return
     
     data = await state.get_data()
     prod_id = data['prod_id']

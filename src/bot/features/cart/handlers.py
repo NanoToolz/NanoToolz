@@ -7,7 +7,11 @@ router = Router()
 
 @router.callback_query(F.data.startswith("add_cart_"))
 async def add_to_cart(callback: CallbackQuery):
-    prod_id = int(callback.data.split("_")[2])
+    try:
+        prod_id = int(callback.data.split("_")[2])
+    except (IndexError, ValueError):
+        await callback.answer("❌ Invalid product!", show_alert=True)
+        return
     user_id = callback.from_user.id
     
     user = db.get_user(user_id)

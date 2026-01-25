@@ -1,4 +1,5 @@
- cimport time
+import asyncio
+import time
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from src.database.json_db import db
@@ -84,6 +85,14 @@ async def process_payment_credits(callback: CallbackQuery):
         await callback.answer("Insufficient balance!", show_alert=True)
         return
 
+    # Validate stock again after lock acquisition
+    for item in purchased_items:
+        prod = item['product']
+        stock = db.get_stock_count(prod['id'])
+        if stock < item['qty']:
+            await callback.answer(f"⚠️ Insufficient stock for {prod['name']}!", show_alert=True)
+            return
+
     # Deduct Balance
     new_balance = user['balance'] - total_price
     
@@ -139,7 +148,7 @@ async def process_payment_credits(callback: CallbackQuery):
 async def process_payment_mock(callback: CallbackQuery):
     # Mock external payment success
     await callback.answer("Processing Mock Payment...", show_alert=False)
-    time.sleep(1) # Fake delay
+    await asyncio.sleep(1) # Fake delay
     
     # Since it's external, we don't deduct credits, but we do everything else.
     # In real app, this would be a webhook callback.
@@ -147,13 +156,21 @@ async def process_payment_mock(callback: CallbackQuery):
     user = db.get_user(user_id)
     cart = user.get("cart", {})
     
-    # ... (Copy logic for delivery but skipping balance check/deduction)
     purchased_items = []
     total_price = 0
     for pid_str, qty in cart.items():
         product = db.get_product(int(pid_str))
         total_price += product['price'] * qty
         purchased_items.append({"product": product, "qty": qty})
+        
+    # Validate stock again before processing
+    for item in purchased_items:
+        prod = item['product']
+        qty = item['qty']
+        stock = db.get_stock_count(prod['id'])
+        if stock < qty:
+            await callback.answer(f"⚠️ Insufficient stock for {prod['name']}!", show_alert=True)
+            return
     
     delivery_msg = "✅ **Payment Received!**\n\n"
     

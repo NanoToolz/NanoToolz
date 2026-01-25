@@ -14,7 +14,8 @@ async def get_usdt_rate() -> float:
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(
-                "https://api.coingecko.com/api/v3/simple/price?ids=tether&vs_currencies=usd"
+                "https://api.coingecko.com/api/v3/simple/price?ids=tether&vs_currencies=usd",
+                timeout=aiohttp.ClientTimeout(total=5)
             ) as resp:
                 data = await resp.json()
                 return float(data["tether"]["usd"])

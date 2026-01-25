@@ -47,15 +47,24 @@ class JsonDatabase:
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 return json.load(f)
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, IOError) as e:
+            print(f"ERROR: Failed to load {file_path}: {e}. Using defaults.")
             return default
 
     def _save_json_sync(self, file_path: str, data: Any):
         """Synchronous atomic write (runs in thread pool)"""
-        temp_path = f"{file_path}.tmp"
-        with open(temp_path, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-        os.replace(temp_path, file_path)
+        try:
+            temp_path = f"{file_path}.tmp"
+            with open(temp_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+            os.replace(temp_path, file_path)
+        except (IOError, OSError) as e:
+            print(f"ERROR: Failed to save {file_path}: {e}")
+            # Attempt recovery by removing temp file
+            try:
+                os.remove(f"{file_path}.tmp")
+            except:
+                pass
 
     async def _save_json_async(self, file_path: str, data: Any):
         """Non-blocking async save using thread pool"""
@@ -174,9 +183,14 @@ class JsonDatabase:
         return len(self.stock.get(str(product_id), []))
 
     def pop_stock(self, product_id: int, count: int) -> List[str]:
+        """Atomically pop stock items with validation"""
         pid = str(product_id)
-        if pid not in self.stock or len(self.stock[pid]) < count:
+        if pid not in self.stock:
             return []
+        
+        # Validate sufficient stock before popping
+        if len(self.stock[pid]) < count:
+            return []  # Fail atomically - return empty list
         
         items = []
         for _ in range(count):
