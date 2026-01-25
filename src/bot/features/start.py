@@ -33,6 +33,9 @@ def get_welcome_text(first_name: str, user_id: int) -> str:
     """
     Generate personalized welcome message
     
+    Checks if admin has set custom welcome text
+    If yes, uses custom text. If no, uses default.
+    
     Args:
         first_name: User's first name
         user_id: User's Telegram ID
@@ -40,15 +43,23 @@ def get_welcome_text(first_name: str, user_id: int) -> str:
     Returns:
         Formatted welcome message with user info
     """
-    return (
-        f"👋 **Welcome to NanoToolz!**\n\n"
-        f"Hi {first_name}!\n"
-        f"Your ID: `{user_id}`\n\n"
-        f"🚀 **Instant Delivery**\n"
-        f"🔒 **Secure Payments**\n"
-        f"💬 **24/7 Support**\n\n"
-        f"Select an option below to get started:"
-    )
+    # Check if admin has set custom welcome text
+    custom_text = db.settings.get("custom_welcome_text")
+    
+    if custom_text:
+        # Use custom welcome text set by admin
+        return custom_text
+    else:
+        # Use default welcome text
+        return (
+            f"👋 **Welcome to NanoToolz!**\n\n"
+            f"Hi {first_name}!\n"
+            f"Your ID: `{user_id}`\n\n"
+            f"🚀 **Instant Delivery**\n"
+            f"🔒 **Secure Payments**\n"
+            f"💬 **24/7 Support**\n\n"
+            f"Select an option below to get started:"
+        )
 
 # Main menu text - shown when user clicks "Back"
 MAIN_MENU_TEXT = "🏠 **Main Menu**\n\nSelect an option below:"
@@ -139,23 +150,44 @@ async def start_command(message: Message):
     keyboard = get_main_keyboard()
     
     # Try to send message with welcome image
-    image_path = get_image("welcome")
-    if image_path:
-        # If image exists, send photo with caption
-        photo = FSInputFile(image_path)
-        await message.answer_photo(
-            photo,
-            caption=welcome_text,
-            reply_markup=keyboard,
-            parse_mode="Markdown"  # Enable bold, italic, etc.
-        )
+    # First check if admin has set custom image
+    custom_image = db.settings.get("custom_welcome_image")
+    
+    if custom_image:
+        # Use custom image set by admin (file_id)
+        try:
+            await message.answer_photo(
+                custom_image,
+                caption=welcome_text,
+                reply_markup=keyboard,
+                parse_mode="Markdown"
+            )
+        except Exception:
+            # Fallback to text if custom image fails
+            await message.answer(
+                welcome_text,
+                reply_markup=keyboard,
+                parse_mode="Markdown"
+            )
     else:
-        # If no image, send text message only
-        await message.answer(
-            welcome_text,
-            reply_markup=keyboard,
-            parse_mode="Markdown"
-        )
+        # Try to use default welcome image
+        image_path = get_image("welcome")
+        if image_path:
+            # If default image exists, send photo with caption
+            photo = FSInputFile(image_path)
+            await message.answer_photo(
+                photo,
+                caption=welcome_text,
+                reply_markup=keyboard,
+                parse_mode="Markdown"
+            )
+        else:
+            # If no image, send text message only
+            await message.answer(
+                welcome_text,
+                reply_markup=keyboard,
+                parse_mode="Markdown"
+            )
 
 @router.callback_query(F.data == "back_main")
 async def back_to_main(callback: CallbackQuery):
