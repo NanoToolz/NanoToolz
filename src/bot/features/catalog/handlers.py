@@ -1,35 +1,22 @@
-"""
-Catalog feature - browse products by category
-"""
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, InputMediaPhoto
-from aiogram.filters.state import StateFilter
-from aiogram.fsm.context import FSMContext
-from sqlalchemy.orm import Session
-
-from src.database import get_db
-from src.database.models import Category, Product, CartItem, User
-from src.logger import logger
+from src.database.json_db import db
 
 router = Router()
 
 @router.callback_query(F.data == "catalog_main")
 async def show_categories(callback: CallbackQuery):
-    """Show category list"""
-    db: Session = next(get_db())
-    
-    categories = db.query(Category).all()
+    categories = db.get_categories()
     
     if not categories:
         await callback.answer("No categories available", show_alert=True)
-        db.close()
         return
     
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(
-                text=f"{cat.emoji} {cat.name}",
-                callback_data=f"cat_{cat.id}"
+                text=f"{cat['emoji']} {cat['name']}",
+                callback_data=f"cat_{cat['id']}"
             )]
             for cat in categories
         ] + [
@@ -37,120 +24,86 @@ async def show_categories(callback: CallbackQuery):
         ]
     )
     
-    text = "📚 Select a Category:\n\nBrowse our products by category"
-    await callback.message.edit_text(text, reply_markup=keyboard)
+    await callback.message.edit_text(
+        "📚 **Catalog Categories**\nSelect a category to browse:",
+        reply_markup=keyboard,
+        parse_mode="Markdown"
+    )
     await callback.answer()
-    db.close()
 
 @router.callback_query(F.data.startswith("cat_"))
 async def show_products(callback: CallbackQuery):
-    """Show products in category"""
-    db: Session = next(get_db())
-    
     cat_id = int(callback.data.split("_")[1])
-    category = db.query(Category).filter(Category.id == cat_id).first()
-    
-    if not category:
-        await callback.answer("Category not found", show_alert=True)
-        db.close()
-        return
-    
-    products = db.query(Product).filter(Product.category_id == cat_id).all()
+    category = db.get_category(cat_id)
+    products = db.get_products(category_id=cat_id)
     
     if not products:
-        text = f"No products in {category.name}"
+        text = f"🚫 No products found in **{category['name']}**"
         keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="⬅️ Back", callback_data="catalog_main")]
-            ]
+            inline_keyboard=[[InlineKeyboardButton(text="⬅️ Back", callback_data="catalog_main")]]
         )
-        await callback.message.edit_text(text, reply_markup=keyboard)
-        db.close()
+        await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="Markdown")
         return
     
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(
-                text=f"{prod.name} - ${prod.price_usd}",
-                callback_data=f"prod_{prod.id}"
-            )]
-            for prod in products
-        ] + [
-            [InlineKeyboardButton(text="⬅️ Back", callback_data="catalog_main")]
-        ]
-    )
+    buttons = []
+    for p in products:
+        buttons.append([InlineKeyboardButton(
+            text=f"📦 {p['name']} - ${p['price']}",
+            callback_data=f"prod_{p['id']}"
+        )])
+        
+    buttons.append([InlineKeyboardButton(text="⬅️ Back", callback_data="catalog_main")])
     
-    text = f"📦 {category.name}\n\nSelect a product:"
-    await callback.message.edit_text(text, reply_markup=keyboard)
+    await callback.message.edit_text(
+        f"📂 **{category['name']}**\nSelect a product:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
+        parse_mode="Markdown"
+    )
     await callback.answer()
-    db.close()
 
 @router.callback_query(F.data.startswith("prod_"))
-async def show_product(callback: CallbackQuery):
-    """Show product details"""
-    db: Session = next(get_db())
-    
+async def show_product_detail(callback: CallbackQuery):
     prod_id = int(callback.data.split("_")[1])
-    product = db.query(Product).filter(Product.id == prod_id).first()
+    product = db.get_product(prod_id)
     
     if not product:
-        await callback.answer("Product not found", show_alert=True)
-        db.close()
+        await callback.answer("Product not found")
         return
+        
+    stock = db.get_stock_count(prod_id)
+    stock_status = f"✅ In Stock ({stock})" if stock > 0 else "❌ Out of Stock"
     
     text = (
-        f"📦 {product.name}\n\n"
-        f"Price: ${product.price_usd}\n"
-        f"Stock: {product.stock if product.stock else '∞'}\n\n"
-        f"Description: {product.description}\n\n"
-        f"Rating: ⭐ {product.rating}/5 ({product.review_count} reviews)"
+        f"📦 **{product['name']}**\n\n"
+        f"📝 {product.get('description', 'No description')}\n\n"
+        f"� Price: **${product['price']}**\n"
+        f"� Status: {stock_status}\n"
     )
     
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="➕ Add to Cart", callback_data=f"addcart_{prod_id}")],
-            [InlineKeyboardButton(text="⬅️ Back", callback_data=f"cat_{product.category_id}")]
-        ]
-    )
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🛒 Add to Cart", callback_data=f"add_cart_{prod_id}")],
+        [InlineKeyboardButton(text="⬅️ Back", callback_data=f"cat_{product['category_id']}")]
+    ])
     
-    if product.image_url:
-        try:
-            media = InputMediaPhoto(media=product.image_url, caption=text)
-            await callback.message.edit_media(media, reply_markup=keyboard)
-        except Exception:
-            await callback.message.edit_text(text, reply_markup=keyboard)
-    else:
-        await callback.message.edit_text(text, reply_markup=keyboard)
+    # Placeholder Image Logic
+    image_url = product.get("image_url")
+    if not image_url:
+        image_url = "https://via.placeholder.com/300x200.png?text=NanoToolz"
+        
+    try:
+        # Check if message has media to edit, else send new media
+        # Since we are editing text messages usually, we might need delete + send photo
+        # But for smooth UX, let's try input media if previous was photo
+        # For now, let's just stick to edit_text or delete/send
+        await callback.message.delete()
+        await callback.message.answer_photo(
+            photo=image_url,
+            caption=text,
+            reply_markup=keyboard,
+            parse_mode="Markdown"
+        )
+    except Exception:
+        # Fallback
+        await callback.message.answer(text, reply_markup=keyboard, parse_mode="Markdown")
+        
     await callback.answer()
-    db.close()
-
-@router.callback_query(F.data.startswith("addcart_"))
-async def add_to_cart(callback: CallbackQuery):
-    """Add product to cart"""
-    db: Session = next(get_db())
-    
-    prod_id = int(callback.data.split("_")[1])
-    user_id = callback.from_user.id
-    
-    user = db.query(User).filter(User.telegram_id == user_id).first()
-    if not user:
-        await callback.answer("User not found", show_alert=True)
-        db.close()
-        return
-    
-    # Check if already in cart
-    existing = db.query(CartItem).filter(
-        CartItem.user_id == user.id,
-        CartItem.product_id == prod_id
-    ).first()
-    
-    if existing:
-        existing.quantity += 1
-    else:
-        cart_item = CartItem(user_id=user.id, product_id=prod_id, quantity=1)
-        db.add(cart_item)
-    
-    db.commit()
-    await callback.answer("✅ Added to cart!", show_alert=False)
-    logger.info(f"User {user_id} added product {prod_id} to cart")
-    db.close()

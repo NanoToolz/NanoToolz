@@ -1,93 +1,57 @@
-"""
-Profile feature - user account management
-"""
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
-from sqlalchemy.orm import Session
-
-from src.database import get_db
-from src.database.models import User, Order
+from src.database.json_db import db
 
 router = Router()
 
 @router.callback_query(F.data == "profile_view")
 async def view_profile(callback: CallbackQuery):
-    """View user profile"""
-    db: Session = next(get_db())
+    user_id = callback.from_user.id
+    user = db.get_user(user_id)
     
-    user = db.query(User).filter(User.telegram_id == callback.from_user.id).first()
-    if not user:
-        await callback.answer("User not found", show_alert=True)
-        db.close()
-        return
-    
-    # Count orders
-    orders_count = db.query(Order).filter(Order.user_id == user.id).count()
+    # Calculate stats
+    total_orders = len(user.get("orders", [])) # In reality we'd scan orders.json for user_id
+    # Since orders.json is separate now, let's scan it
+    user_orders = [o for o in db.orders if str(o.get('user_id')) == str(user_id)]
     
     text = (
-        f"👤 Your Profile\n\n"
-        f"Name: {user.first_name or 'N/A'}\n"
-        f"Username: @{user.username or 'N/A'}\n"
-        f"ID: {user.telegram_id}\n\n"
-        f"💰 Account Balance: ${user.credits:.2f}\n"
-        f"📦 Orders: {orders_count}\n"
-        f"🌍 Currency: {user.currency}\n"
-        f"🗣️ Language: {user.language}\n\n"
-        f"Joined: {user.created_at.strftime('%Y-%m-%d')}"
+        f"👤 **User Profile**\n\n"
+        f"🆔 ID: `{user_id}`\n"
+        f"👤 Name: {callback.from_user.full_name}\n"
+        f"💰 Balance: **${user.get('balance', 0.0):.2f}**\n"
+        f"📦 Total Orders: {len(user_orders)}\n"
+        f"� Joined: {user.get('joined_at', 'Recently')}\n"
     )
     
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="📋 Order History", callback_data="profile_orders")],
-            [InlineKeyboardButton(text="⬅️ Back", callback_data="back_main")]
-        ]
-    )
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="💰 Topup Balance", callback_data="topup")],
+        [InlineKeyboardButton(text="� Order History", callback_data="order_history")],
+        [InlineKeyboardButton(text="⬅️ Back", callback_data="back_main")]
+    ])
     
-    await callback.message.edit_text(text, reply_markup=keyboard)
+    await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="Markdown")
     await callback.answer()
-    db.close()
 
-@router.callback_query(F.data == "profile_orders")
-async def view_orders(callback: CallbackQuery):
-    """View order history"""
-    db: Session = next(get_db())
+@router.callback_query(F.data == "order_history")
+async def view_order_history(callback: CallbackQuery):
+    user_id = callback.from_user.id
+    user_orders = [o for o in db.orders if str(o.get('user_id')) == str(user_id)]
     
-    user = db.query(User).filter(User.telegram_id == callback.from_user.id).first()
-    if not user:
-        await callback.answer("User not found", show_alert=True)
-        db.close()
+    if not user_orders:
+        await callback.answer("No orders found", show_alert=True)
         return
+        
+    # Show last 5 orders
+    recent = sorted(user_orders, key=lambda x: x.get('timestamp', 0), reverse=True)[:5]
     
-    orders = db.query(Order).filter(Order.user_id == user.id).all()
+    text = "📜 **Recent Orders**\n\n"
+    for order in recent:
+        prod = db.get_product(order['product_id'])
+        prod_name = prod['name'] if prod else "Unknown Product"
+        text += f"🔹 **{prod_name}**\n   Price: ${order.get('total', 0):.2f}\n   Keys: {len(order.get('keys_delivered', []))}\n\n"
+        
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⬅️ Back to Profile", callback_data="profile_view")]
+    ])
     
-    if not orders:
-        text = "📦 Order History\n\nYou have no orders yet."
-        keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="🛍️ Start Shopping", callback_data="catalog_main")],
-                [InlineKeyboardButton(text="⬅️ Back", callback_data="profile_view")]
-            ]
-        )
-        await callback.message.edit_text(text, reply_markup=keyboard)
-        db.close()
-        return
-    
-    text = "📦 Order History\n\n"
-    for i, order in enumerate(orders[-5:], 1):  # Last 5 orders
-        from src.database.models import Product
-        product = db.query(Product).filter(Product.id == order.product_id).first()
-        status_emoji = "✅" if order.payment_status == "completed" else "⏳"
-        text += (
-            f"{i}. {product.name if product else 'N/A'}\n"
-            f"   {status_emoji} ${order.price_paid_usd} | {order.created_at.strftime('%Y-%m-%d')}\n\n"
-        )
-    
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="⬅️ Back", callback_data="profile_view")]
-        ]
-    )
-    
-    await callback.message.edit_text(text, reply_markup=keyboard)
-    await callback.answer()
-    db.close()
+    await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="Markdown")
