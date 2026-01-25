@@ -1,0 +1,17 @@
+[
+  {
+    "id": 1,
+    "name": "Software",
+    "emoji": "💻"
+  },
+  {
+    "id": 2,
+    "name": "Accounts",
+    "emoji": "👤"
+  },
+  {
+    "id": 3,
+    "name": "Services",
+    "emoji": "🛠️"
+  }
+]
