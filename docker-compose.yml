@@ -1,0 +1,25 @@
+# ============================================
+# DOCKER COMPOSE - Easy Deployment
+# ============================================
+
+version: '3.8'
+
+services:
+  bot:
+    build: .
+    container_name: nanotoolz_bot
+    restart: always
+    env_file:
+      - .env
+    environment:
+      - MONGODB_URI=${MONGODB_URI}
+      - BOT_TOKEN=${BOT_TOKEN}
+      - ADMIN_IDS=${ADMIN_IDS}
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - bot_network
+
+networks:
+  bot_network:
+    driver: bridge
