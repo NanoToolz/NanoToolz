@@ -1,5 +1,11 @@
+# ============================================
+# ROUTER REGISTRATION
+# ============================================
+# Register all feature routers
+
 from aiogram import Dispatcher
 
+# Import all feature routers
 from src.bot.features.start import router as start_router
 from src.bot.features.catalog import router as catalog_router
 from src.bot.features.cart import router as cart_router
@@ -15,7 +21,7 @@ from src.bot.features.wishlist import router as wishlist_router
 
 def setup_routers(dp: Dispatcher) -> None:
     """Register all routers"""
-    # Specific features first (order matters for callback matching)
+    # Register feature routers
     dp.include_router(admin_router)
     dp.include_router(catalog_router)
     dp.include_router(cart_router)
@@ -28,5 +34,5 @@ def setup_routers(dp: Dispatcher) -> None:
     dp.include_router(rewards_router)
     dp.include_router(wishlist_router)
     
-    # Start handler last (command handlers)
+    # Start router last (command handlers)
     dp.include_router(start_router)
