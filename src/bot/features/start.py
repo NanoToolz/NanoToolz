@@ -56,6 +56,7 @@ def get_main_keyboard() -> InlineKeyboardMarkup:
 
 @router.message(CommandStart())
 async def start_command(message: Message):
+    logger.info(f"Received /start from user {message.from_user.id}")
     user_id = message.from_user.id
     username = message.from_user.username
     first_name = message.from_user.first_name or "User"
