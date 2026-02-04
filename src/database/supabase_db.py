@@ -19,8 +19,11 @@ class Database:
         self.client = get_client()
 
     def get_user(self, user_id: int) -> Optional[dict]:
-        result = self.client.table("users").select("*").eq("id", user_id).maybe_single().execute()
-        return result.data
+        try:
+            result = self.client.table("users").select("*").eq("id", user_id).maybe_single().execute()
+            return result.data if result else None
+        except Exception:
+            return None
 
     def create_user(self, user_id: int, username: str = None, first_name: str = None, referred_by: int = None) -> dict:
         referral_code = generate_referral_code()
@@ -171,7 +174,7 @@ class Database:
 
     def add_to_cart(self, user_id: int, product_id: int, quantity: int = 1) -> dict:
         existing = self.client.table("cart").select("*").eq("user_id", user_id).eq("product_id", product_id).maybe_single().execute()
-        if existing.data:
+        if existing and existing.data:
             new_qty = existing.data["quantity"] + quantity
             result = self.client.table("cart").update({"quantity": new_qty}).eq("id", existing.data["id"]).execute()
             return result.data[0] if result.data else None
@@ -300,8 +303,11 @@ class Database:
         return True
 
     def is_in_wishlist(self, user_id: int, product_id: int) -> bool:
-        result = self.client.table("wishlist").select("id").eq("user_id", user_id).eq("product_id", product_id).maybe_single().execute()
-        return result.data is not None
+        try:
+            result = self.client.table("wishlist").select("id").eq("user_id", user_id).eq("product_id", product_id).maybe_single().execute()
+            return result is not None and result.data is not None
+        except Exception:
+            return False
 
     def create_ticket(self, user_id: int, subject: str) -> dict:
         data = {"user_id": user_id, "subject": subject, "status": "open"}
