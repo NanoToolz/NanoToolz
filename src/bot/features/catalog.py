@@ -79,7 +79,10 @@ async def show_categories(callback: CallbackQuery):
     try:
         await callback.message.edit_text(CATALOG_TITLE, reply_markup=keyboard, parse_mode="Markdown")
     except Exception:
-        await callback.message.delete()
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
         await callback.message.answer(CATALOG_TITLE, reply_markup=keyboard, parse_mode="Markdown")
 
     await callback.answer()
@@ -105,17 +108,28 @@ async def show_products(callback: CallbackQuery):
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[[InlineKeyboardButton(text="Back", callback_data="catalog_main")]]
         )
-        await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="Markdown")
+        try:
+            await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="Markdown")
+        except Exception:
+            try:
+                await callback.message.delete()
+            except Exception:
+                pass
+            await callback.message.answer(text, reply_markup=keyboard, parse_mode="Markdown")
         await callback.answer()
         return
 
     keyboard = get_products_keyboard(products, cat_id)
+    text = f"{category['name']}\nSelect a product:"
 
-    await callback.message.edit_text(
-        f"{category['name']}\nSelect a product:",
-        reply_markup=keyboard,
-        parse_mode="Markdown"
-    )
+    try:
+        await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="Markdown")
+    except Exception:
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+        await callback.message.answer(text, reply_markup=keyboard, parse_mode="Markdown")
 
     await callback.answer()
 
@@ -158,6 +172,10 @@ async def show_product_detail(callback: CallbackQuery):
 
     try:
         await callback.message.delete()
+    except Exception:
+        pass
+
+    try:
         await callback.message.answer_photo(
             photo=image_url,
             caption=text,
@@ -165,10 +183,7 @@ async def show_product_detail(callback: CallbackQuery):
             parse_mode="Markdown"
         )
     except Exception:
-        try:
-            await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="Markdown")
-        except Exception:
-            await callback.message.answer(text, reply_markup=keyboard, parse_mode="Markdown")
+        await callback.message.answer(text, reply_markup=keyboard, parse_mode="Markdown")
 
     await callback.answer()
 
