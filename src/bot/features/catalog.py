@@ -13,8 +13,16 @@ PRODUCT_DETAIL_TEMPLATE = (
     "{name}\n\n"
     "{description}\n\n"
     "Price: ${price}\n"
+    "Type: {type}\n"
     "Status: {status}\n"
 )
+
+PRODUCT_TYPE_LABELS = {
+    "key": "Digital Key",
+    "credentials": "Account Login",
+    "link": "Download Link",
+    "text": "Text Content",
+}
 
 
 class SearchStates(StatesGroup):
@@ -128,6 +136,8 @@ async def show_product_detail(callback: CallbackQuery):
 
     stock = db.get_stock_count(prod_id)
     stock_status = f"In Stock ({stock})" if stock > 0 else "Out of Stock"
+    product_type = product.get('product_type', 'key')
+    type_label = PRODUCT_TYPE_LABELS.get(product_type, "Digital Product")
 
     user_id = callback.from_user.id
     in_wishlist = db.is_in_wishlist(user_id, prod_id)
@@ -136,6 +146,7 @@ async def show_product_detail(callback: CallbackQuery):
         name=product['name'],
         description=product.get('description', 'No description'),
         price=product['price'],
+        type=type_label,
         status=stock_status
     )
 
@@ -224,11 +235,14 @@ async def toggle_wishlist(callback: CallbackQuery):
 
         stock = db.get_stock_count(prod_id)
         stock_status = f"In Stock ({stock})" if stock > 0 else "Out of Stock"
+        product_type = product.get('product_type', 'key')
+        type_label = PRODUCT_TYPE_LABELS.get(product_type, "Digital Product")
 
         text = PRODUCT_DETAIL_TEMPLATE.format(
             name=product['name'],
             description=product.get('description', 'No description'),
             price=product['price'],
+            type=type_label,
             status=stock_status
         )
 

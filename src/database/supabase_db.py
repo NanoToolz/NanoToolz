@@ -120,13 +120,14 @@ class Database:
         result = self.client.table("products").select("*").eq("id", product_id).maybe_single().execute()
         return result.data
 
-    def create_product(self, category_id: int, name: str, price: float, description: str = None, image_url: str = None) -> dict:
+    def create_product(self, category_id: int, name: str, price: float, description: str = None, image_url: str = None, product_type: str = "key") -> dict:
         data = {
             "category_id": category_id,
             "name": name,
             "price": price,
             "description": description,
-            "image_url": image_url
+            "image_url": image_url,
+            "product_type": product_type
         }
         result = self.client.table("products").insert(data).execute()
         return result.data[0] if result.data else None
@@ -394,6 +395,22 @@ class Database:
     def get_transactions(self, user_id: int, limit: int = 10) -> list:
         result = self.client.table("transactions").select("*").eq("user_id", user_id).order("created_at", desc=True).limit(limit).execute()
         return result.data or []
+
+
+    def format_delivery_item(self, product: dict, stock_data: str) -> str:
+        product_type = product.get("product_type", "key")
+
+        if product_type == "credentials":
+            parts = stock_data.split(":", 1)
+            if len(parts) == 2:
+                return f"Email: `{parts[0]}`\nPassword: `{parts[1]}`"
+            return f"`{stock_data}`"
+        elif product_type == "link":
+            return f"[Click to Access]({stock_data})"
+        elif product_type == "text":
+            return f"```\n{stock_data}\n```"
+        else:
+            return f"`{stock_data}`"
 
 
 db = Database()

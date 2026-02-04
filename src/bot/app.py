@@ -2,6 +2,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 from src.config import settings
 from src.bot.routers import setup_routers
+from src.database.seed_data import seed_database
 
 
 async def start_bot():
@@ -10,6 +11,14 @@ async def start_bot():
     dp = Dispatcher(storage=storage)
 
     setup_routers(dp)
+
+    try:
+        if seed_database():
+            print("Demo data seeded successfully!")
+        else:
+            print("Database already has data, skipping seed.")
+    except Exception as e:
+        print(f"Seed skipped: {e}")
 
     await bot.delete_webhook(drop_pending_updates=True)
 

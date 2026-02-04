@@ -205,7 +205,8 @@ async def process_payment_credits(callback: CallbackQuery, state: FSMContext):
 
             delivery_msg += f"{prod['name']}\n"
             for s in stock_items:
-                delivery_msg += f"`{s['data']}`\n"
+                formatted = db.format_delivery_item(prod, s['data'])
+                delivery_msg += f"{formatted}\n"
                 db.add_order_item(order['id'], prod['id'], s['id'], float(prod['price']))
         else:
             delivery_msg += f"{prod['name']}\n"
@@ -294,7 +295,8 @@ async def process_payment_mock(callback: CallbackQuery, state: FSMContext):
 
             delivery_msg += f"{prod['name']}\n"
             for s in stock_items:
-                delivery_msg += f"`{s['data']}`\n"
+                formatted = db.format_delivery_item(prod, s['data'])
+                delivery_msg += f"{formatted}\n"
                 db.add_order_item(order['id'], prod['id'], s['id'], float(prod['price']))
         else:
             delivery_msg += f"{prod['name']}\n"

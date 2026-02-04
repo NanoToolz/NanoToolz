@@ -14,7 +14,16 @@ class ProductStates(StatesGroup):
     waiting_for_name = State()
     waiting_for_description = State()
     waiting_for_price = State()
+    waiting_for_type = State()
     waiting_for_image = State()
+
+
+PRODUCT_TYPES = {
+    "key": "Keys/Codes",
+    "credentials": "Accounts (email:pass)",
+    "link": "Links/URLs",
+    "text": "Text Content",
+}
 
 
 class CategoryStates(StatesGroup):
@@ -270,23 +279,56 @@ async def product_price_received(message: Message, state: FSMContext):
         await message.answer("Invalid price. Please enter a number like 10.99")
         return
 
+    await state.update_data(price=price)
+    await state.set_state(ProductStates.waiting_for_type)
+
+    buttons = []
+    for type_key, type_label in PRODUCT_TYPES.items():
+        buttons.append([InlineKeyboardButton(
+            text=type_label,
+            callback_data=f"prod_type_{type_key}"
+        )])
+    buttons.append([InlineKeyboardButton(text="Cancel", callback_data="admin_products")])
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+    await message.answer("Select product type (how stock will be delivered):", reply_markup=keyboard)
+
+
+@router.callback_query(F.data.startswith("prod_type_"))
+async def product_type_selected(callback: CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("Authorized Personnel Only", show_alert=True)
+        return
+
+    current_state = await state.get_state()
+    if current_state != ProductStates.waiting_for_type.state:
+        await callback.answer("Session expired", show_alert=True)
+        return
+
+    product_type = callback.data.split("_")[2]
     data = await state.get_data()
 
     product = db.create_product(
         category_id=data['category_id'],
         name=data['name'],
-        price=price,
-        description=data['description']
+        price=data['price'],
+        description=data['description'],
+        product_type=product_type
     )
 
     await state.clear()
 
+    type_label = PRODUCT_TYPES.get(product_type, product_type)
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="Add Stock", callback_data=f"add_stock_{product['id']}")],
         [InlineKeyboardButton(text="Back to Products", callback_data="admin_products")]
     ])
 
-    await message.answer(f"Product '{data['name']}' created!\n\nNow add stock keys.", reply_markup=keyboard)
+    await callback.message.edit_text(
+        f"Product '{data['name']}' created!\n\nType: {type_label}\nNow add stock items.",
+        reply_markup=keyboard
+    )
+    await callback.answer()
 
 
 @router.callback_query(F.data.startswith("edit_prod_"))
@@ -307,11 +349,14 @@ async def edit_product_menu(callback: CallbackQuery):
         return
 
     stock_count = db.get_stock_count(prod_id)
+    product_type = product.get('product_type', 'key')
+    type_label = PRODUCT_TYPES.get(product_type, product_type)
 
     text = (
         f"Editing: {product['name']}\n\n"
         f"Price: ${product['price']}\n"
-        f"Stock: {stock_count} keys\n"
+        f"Type: {type_label}\n"
+        f"Stock: {stock_count} items\n"
         f"Description: {product.get('description', 'None')[:100]}\n"
     )
 
@@ -366,10 +411,21 @@ async def start_add_stock(callback: CallbackQuery, state: FSMContext):
         await callback.answer("Invalid product", show_alert=True)
         return
 
+    product = db.get_product(prod_id)
+    product_type = product.get('product_type', 'key') if product else 'key'
+
+    hints = {
+        "key": "Send keys (one per line):\nExample:\nXXXX-XXXX-XXXX-XXXX\nYYYY-YYYY-YYYY-YYYY",
+        "credentials": "Send accounts (email:password format, one per line):\nExample:\nuser1@mail.com:pass123\nuser2@mail.com:pass456",
+        "link": "Send links (one per line):\nExample:\nhttps://example.com/download/abc\nhttps://example.com/download/xyz",
+        "text": "Send text content (one item per line):",
+    }
+
     await state.update_data(prod_id=prod_id)
     await state.set_state(StockStates.waiting_for_keys)
 
-    await callback.message.answer("Send stock keys (one per line):", reply_markup=ForceReply())
+    hint = hints.get(product_type, hints["key"])
+    await callback.message.answer(hint, reply_markup=ForceReply())
     await callback.answer()
 
 
